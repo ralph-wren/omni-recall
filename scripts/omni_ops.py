@@ -49,7 +49,8 @@ class OmniRecallManager:
         metadata = {
             "engine": "omni-recall-v1",
             "model": "text-embedding-3-small",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "language": "zh-CN"
         }
         
         cur.execute("""
@@ -98,7 +99,7 @@ class OmniRecallManager:
 if __name__ == "__main__":
     manager = OmniRecallManager()
     if len(sys.argv) < 2:
-        print("Omni-Recall Engine CLI")
+        print("Omni-Recall Engine CLI (Default Language: zh-CN)")
         print("Usage: python3 omni_ops.py sync 'content' [source] | fetch [days] [limit] [keyword1] [keyword2] ...")
         sys.exit(1)
 
