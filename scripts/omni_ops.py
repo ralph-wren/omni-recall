@@ -62,7 +62,7 @@ class OmniRecallManager:
         conn.close()
         return True
 
-    def fetch(self, days=10, limit=None):
+    def fetch(self, days=10, limit=None, keywords=None):
         """Retrieves historical context from the neural knowledge base."""
         if not self.supabase_password:
             raise ValueError("Environment variable 'SUPABASE_PASSWORD' is required for context retrieval.")
@@ -72,8 +72,17 @@ class OmniRecallManager:
         
         since_date = datetime.now() - timedelta(days=days)
         
-        query = "SELECT content, created_at, source, metadata FROM memories WHERE created_at >= %s ORDER BY created_at DESC"
+        query = "SELECT content, created_at, source, metadata FROM memories WHERE created_at >= %s"
         params = [since_date]
+
+        if keywords:
+            if isinstance(keywords, str):
+                keywords = [keywords]
+            for kw in keywords:
+                query += " AND content ILIKE %s"
+                params.append(f"%{kw}%")
+            
+        query += " ORDER BY created_at DESC"
         
         if limit:
             query += " LIMIT %s"
@@ -90,7 +99,7 @@ if __name__ == "__main__":
     manager = OmniRecallManager()
     if len(sys.argv) < 2:
         print("Omni-Recall Engine CLI")
-        print("Usage: python3 omni_ops.py sync 'content' [source] | fetch [days] [limit]")
+        print("Usage: python3 omni_ops.py sync 'content' [source] | fetch [days] [limit] [keyword1] [keyword2] ...")
         sys.exit(1)
 
     action = sys.argv[1]
@@ -103,8 +112,9 @@ if __name__ == "__main__":
                 print("SUCCESS: Context synchronized to neural base.")
         elif action == "fetch":
             days = int(sys.argv[2]) if len(sys.argv) > 2 else 10
-            limit = int(sys.argv[3]) if len(sys.argv) > 3 else None
-            memories = manager.fetch(days, limit)
+            limit = int(sys.argv[3]) if (len(sys.argv) > 3 and sys.argv[3].lower() != 'none') else None
+            keywords = sys.argv[4:] if len(sys.argv) > 4 else None
+            memories = manager.fetch(days, limit, keywords)
             print(json.dumps([{"content": m[0], "time": str(m[1]), "source": m[2], "metadata": m[3]} for m in memories], ensure_ascii=False))
         else:
             print("Invalid command or missing parameters.")

@@ -38,6 +38,9 @@ python3 omni-recall/scripts/omni_ops.py sync "User prefers Tailwind CSS for fron
 
 # Fetch recent context
 python3 omni-recall/scripts/omni_ops.py fetch 7
+
+# Search context by multiple keywords (AND logic)
+python3 omni-recall/scripts/omni_ops.py fetch 30 none "tailwind" "config"
 ```
 
 ## 🤝 Contributing
