@@ -10,7 +10,7 @@ Omni-Recall is a high-performance memory management skill designed for AI agents
 ## 🚀 Core Capabilities
 
 1.  **Neural Synchronization (`sync`)**:
-    Encodes current session state, user preferences, and operational steps into 1536-dimensional vectors using OpenAI's `text-embedding-3-small` via APIYI.
+    Encodes current session state, user preferences, and operational steps into 1536-dimensional vectors using OpenAI's `text-embedding-3-small` via APIYI. **Includes automatic duplicate detection** (skips if cosine similarity > 0.9).
 2.  **Contextual Retrieval (`fetch`)**:
     Pulls historical neural records from the last N days to re-establish the agent's mental model and context. Supports optional multiple keyword filtering (AND logic).
 3.  **Knowledge Uplink**:
@@ -20,7 +20,11 @@ Omni-Recall is a high-performance memory management skill designed for AI agents
 
 ### Synchronize Current State
 ```bash
-python3 omni-recall/scripts/omni_ops.py sync "Detailed summary of recent operations and user preferences" "session_tag"
+# Basic sync
+python3 omni-recall/scripts/omni_ops.py sync "Detailed summary" "session_tag"
+
+# Sync with custom similarity threshold (e.g., 0.95)
+python3 omni-recall/scripts/omni_ops.py sync "Detailed summary" "session_tag" 0.95
 ```
 
 ### Retrieve Historical Context

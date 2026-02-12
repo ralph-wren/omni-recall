@@ -34,18 +34,36 @@ class OmniRecallManager:
             raise Exception(f"Neural encoding failed: {res.text}")
         return res.json()['data'][0]['embedding']
 
-    def sync(self, content, source="omni-recall-sync"):
-        """Synchronizes content to the neural knowledge base."""
+    def sync(self, content, source="omni-recall-sync", threshold=0.9):
+        """Synchronizes content to the neural knowledge base with duplicate detection."""
         if not self.supabase_password:
             raise ValueError("Environment variable 'SUPABASE_PASSWORD' is required for database uplink.")
             
         print(f"Encoding content into vector space...")
         embedding = self._get_embedding(content)
         
-        print(f"Uplinking to Supabase knowledge cluster...")
+        print(f"Checking for high-similarity duplicates (threshold={threshold})...")
         conn = psycopg2.connect(password=self.supabase_password, **self.db_config)
         cur = conn.cursor()
         
+        # pgvector: 1 - (embedding <=> %s) is cosine similarity
+        cur.execute("""
+            SELECT content, 1 - (embedding <=> %s::vector) as similarity 
+            FROM memories 
+            ORDER BY embedding <=> %s::vector 
+            LIMIT 1
+        """, (embedding, embedding))
+        
+        result = cur.fetchone()
+        if result:
+            existing_content, similarity = result
+            if similarity >= threshold:
+                print(f"SKIP: High similarity detected ({similarity:.4f}). Content already exists in neural base.")
+                cur.close()
+                conn.close()
+                return False
+
+        print(f"Uplinking to Supabase knowledge cluster...")
         metadata = {
             "engine": "omni-recall-v1",
             "model": "text-embedding-3-small",
@@ -100,7 +118,9 @@ if __name__ == "__main__":
     manager = OmniRecallManager()
     if len(sys.argv) < 2:
         print("Omni-Recall Engine CLI (Default Language: zh-CN)")
-        print("Usage: python3 omni_ops.py sync 'content' [source] | fetch [days] [limit] [keyword1] [keyword2] ...")
+        print("Usage:")
+        print("  python3 omni_ops.py sync 'content' [source] [threshold]")
+        print("  python3 omni_ops.py fetch [days] [limit] [keyword1] [keyword2] ...")
         sys.exit(1)
 
     action = sys.argv[1]
@@ -109,7 +129,8 @@ if __name__ == "__main__":
         if action == "sync" and len(sys.argv) > 2:
             content = sys.argv[2]
             source = sys.argv[3] if len(sys.argv) > 3 else "omni-manual-uplink"
-            if manager.sync(content, source):
+            threshold = float(sys.argv[4]) if len(sys.argv) > 4 else 0.9
+            if manager.sync(content, source, threshold):
                 print("SUCCESS: Context synchronized to neural base.")
         elif action == "fetch":
             days = int(sys.argv[2]) if len(sys.argv) > 2 else 10
