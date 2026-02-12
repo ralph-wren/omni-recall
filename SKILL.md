@@ -45,6 +45,14 @@ python3 scripts/omni_ops.py sync-instruction "tone" "Professional yet friendly, 
 python3 scripts/omni_ops.py sync-instruction "workflow" "1. Plan -> 2. Implementation -> 3. Verification -> 4. Summary."
 ```
 
+### Fetch Full Context (Identity + Behavior + Recent History)
+```bash
+# Get ALL profiles + ALL instructions + memories from last 10 days
+# (Profiles and Instructions are always fully retrieved regardless of 'days' parameter)
+python3 scripts/omni_ops.py fetch-full-context 10
+```
+
+
 ### Fetch History (Context Recall)
 ```bash
 # Last 30 days, no limit, keywords "Python" and "optimization"
@@ -61,13 +69,6 @@ python3 scripts/omni_ops.py fetch-profile "preference"
 ```bash
 # Get all 'workflow' category instructions
 python3 scripts/omni_ops.py fetch-instruction "workflow"
-```
-
-### Fetch Full Context (Identity + Behavior + Recent History)
-```bash
-# Get ALL profiles + ALL instructions + memories from last 7 days
-# (Profiles and Instructions are always fully retrieved regardless of 'days' parameter)
-python3 scripts/omni_ops.py fetch-full-context 7
 ```
 
 ---
