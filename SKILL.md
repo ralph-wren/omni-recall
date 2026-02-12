@@ -15,6 +15,8 @@ Omni-Recall is a high-performance memory management skill designed for AI agents
     Pulls historical neural records from the last N days to re-establish the agent's mental model and context. Supports optional multiple keyword filtering (AND logic).
 3.  **User Profile Management (`sync-profile` / `fetch-profile`)**:
     Manages user roles, preferences, settings, and personas in a dedicated `profiles` matrix. Unlike `memories`, this table stores stable personal attributes rather than session logs.
+4.  **AI Instruction Management (`sync-instruction` / `fetch-instruction`)**:
+    Stores operational requirements for the AI, such as response tone, nickname, attitude, and mandatory working steps in the `instructions` table.
 
 ---
 
@@ -34,6 +36,15 @@ python3 scripts/omni_ops.py sync-profile "persona" "Experienced Senior Backend E
 python3 scripts/omni_ops.py sync-profile "preference" "Prefers concise code without excessive comments."
 ```
 
+### Synchronize AI Instructions
+```bash
+# Set tone
+python3 scripts/omni_ops.py sync-instruction "tone" "Professional yet friendly, use 'Partner' as my nickname."
+
+# Set workflow steps
+python3 scripts/omni_ops.py sync-instruction "workflow" "1. Plan -> 2. Implementation -> 3. Verification -> 4. Summary."
+```
+
 ### Fetch History (Context Recall)
 ```bash
 # Last 30 days, no limit, keywords "Python" and "optimization"
@@ -44,14 +55,17 @@ python3 scripts/omni_ops.py fetch 30 none "Python" "optimization"
 ```bash
 # Get all 'preference' category profiles
 python3 scripts/omni_ops.py fetch-profile "preference"
-
-# Search all profiles for keyword "Engineer"
-python3 scripts/omni_ops.py fetch-profile none "Engineer"
 ```
 
-### Fetch Full Context (Identity + Recent History)
+### Fetch Instructions (Behavior Recall)
 ```bash
-# Get all profiles + memories from last 7 days
+# Get all 'workflow' category instructions
+python3 scripts/omni_ops.py fetch-instruction "workflow"
+```
+
+### Fetch Full Context (Identity + Behavior + Recent History)
+```bash
+# Get all profiles + all instructions + memories from last 7 days
 python3 scripts/omni_ops.py fetch-full-context 7
 ```
 
@@ -93,6 +107,20 @@ create table if not exists public.profiles (
 
 -- Index for profiles similarity search
 create index on public.profiles using ivfflat (embedding vector_cosine_ops);
+
+-- Create the AI instructions matrix (Tone, Workflow, Rules)
+create table if not exists public.instructions (
+  id uuid primary key default gen_random_uuid(),
+  category text not null,        -- 'tone', 'workflow', 'rule', 'naming'
+  content text not null,         -- Instruction detail
+  embedding vector(1536),       -- Neural vector
+  metadata jsonb,               -- Versioning & source
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- Index for instructions similarity search
+create index on public.instructions using ivfflat (embedding vector_cosine_ops);
 ```
 
 ### 2. Environment Configuration

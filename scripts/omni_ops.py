@@ -114,13 +114,93 @@ class OmniRecallManager:
         conn.close()
         return rows
 
+    def sync_instruction(self, category, content, threshold=0.9):
+        """Synchronizes AI instruction (tone, workflow, rule) with duplicate detection."""
+        if not self.supabase_password:
+            raise ValueError("Environment variable 'SUPABASE_PASSWORD' is required for database uplink.")
+            
+        print(f"Encoding instruction '{category}' into vector space...")
+        embedding = self._get_embedding(content)
+        
+        conn = psycopg2.connect(password=self.supabase_password, **self.db_config)
+        cur = conn.cursor()
+        
+        # Check for duplicates within the same category
+        cur.execute("""
+            SELECT content, 1 - (embedding <=> %s::vector) as similarity 
+            FROM instructions 
+            WHERE category = %s
+            ORDER BY embedding <=> %s::vector 
+            LIMIT 1
+        """, (embedding, category, embedding))
+        
+        result = cur.fetchone()
+        if result:
+            existing_content, similarity = result
+            if similarity >= threshold:
+                print(f"SKIP: High similarity detected in '{category}' ({similarity:.4f}). Instruction already exists.")
+                cur.close()
+                conn.close()
+                return False
+
+        print(f"Uplinking to Supabase instruction cluster...")
+        metadata = {
+            "engine": "omni-recall-v1",
+            "model": "text-embedding-3-small",
+            "timestamp": datetime.now().isoformat(),
+            "language": "zh-CN"
+        }
+        
+        cur.execute("""
+            INSERT INTO instructions (category, content, embedding, metadata)
+            VALUES (%s, %s, %s, %s)
+        """, (category, content, embedding, json.dumps(metadata)))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        return True
+
+    def fetch_instruction(self, category=None, keywords=None):
+        """Retrieves AI instructions, optionally filtered by category and keywords."""
+        if not self.supabase_password:
+            raise ValueError("Environment variable 'SUPABASE_PASSWORD' is required for context retrieval.")
+            
+        conn = psycopg2.connect(password=self.supabase_password, **self.db_config)
+        cur = conn.cursor()
+        
+        query = "SELECT category, content, metadata FROM instructions WHERE 1=1"
+        params = []
+
+        if category:
+            query += " AND category = %s"
+            params.append(category)
+
+        if keywords:
+            if isinstance(keywords, str):
+                keywords = [keywords]
+            for kw in keywords:
+                query += " AND content ILIKE %s"
+                params.append(f"%{kw}%")
+            
+        query += " ORDER BY category ASC, created_at DESC"
+            
+        cur.execute(query, tuple(params))
+        rows = cur.fetchall()
+        
+        cur.close()
+        conn.close()
+        return rows
+
     def fetch_full_context(self, days=10, limit=None):
-        """Combines all user profiles and recent memories into a comprehensive context."""
+        """Combines all user profiles, AI instructions, and recent memories into a comprehensive context."""
         profiles = self.fetch_profile()
+        instructions = self.fetch_instruction()
         memories = self.fetch(days=days, limit=limit)
         
         return {
             "profiles": [{"category": p[0], "content": p[1]} for p in profiles],
+            "ai_instructions": [{"category": i[0], "content": i[1]} for i in instructions],
             "recent_memories": [{"content": m[0], "time": str(m[1]), "source": m[2]} for m in memories]
         }
 
@@ -211,6 +291,8 @@ if __name__ == "__main__":
         print("  python3 omni_ops.py fetch [days] [limit] [keyword1] [keyword2] ...")
         print("  python3 omni_ops.py sync-profile <category> <content> [threshold]")
         print("  python3 omni_ops.py fetch-profile [category] [keyword1] [keyword2] ...")
+        print("  python3 omni_ops.py sync-instruction <category> <content> [threshold]")
+        print("  python3 omni_ops.py fetch-instruction [category] [keyword1] [keyword2] ...")
         print("  python3 omni_ops.py fetch-full-context [days] [limit]")
         sys.exit(1)
 
@@ -240,6 +322,17 @@ if __name__ == "__main__":
             keywords = sys.argv[3:] if len(sys.argv) > 3 else None
             profiles = manager.fetch_profile(category, keywords)
             print(json.dumps([{"category": p[0], "content": p[1], "metadata": p[2]} for p in profiles], ensure_ascii=False))
+        elif action == "sync-instruction" and len(sys.argv) > 3:
+            category = sys.argv[2]
+            content = sys.argv[3]
+            threshold = float(sys.argv[4]) if len(sys.argv) > 4 else 0.9
+            if manager.sync_instruction(category, content, threshold):
+                print(f"SUCCESS: Instruction '{category}' synchronized.")
+        elif action == "fetch-instruction":
+            category = sys.argv[2] if (len(sys.argv) > 2 and sys.argv[2].lower() != 'none') else None
+            keywords = sys.argv[3:] if len(sys.argv) > 3 else None
+            instructions = manager.fetch_instruction(category, keywords)
+            print(json.dumps([{"category": i[0], "content": i[1], "metadata": i[2]} for i in instructions], ensure_ascii=False))
         elif action == "fetch-full-context":
             days = int(sys.argv[2]) if len(sys.argv) > 2 else 10
             limit = int(sys.argv[3]) if (len(sys.argv) > 3 and sys.argv[3].lower() != 'none') else None
