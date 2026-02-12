@@ -56,10 +56,13 @@ python3 scripts/omni_ops.py sync-profile "persona" "Senior AI Engineer"
 python3 scripts/omni_ops.py sync-instruction "tone" "Professional and gentle"
 ```
 
-### 3. Batch Sync Documentation
+### 3. Batch Sync (Files & URLs)
 ```bash
-# Automatically split markdown by H1-H5 headers and sync
+# Automatically split markdown by H1-H5 headers
 python3 scripts/omni_ops.py batch-sync-doc "docs/spark_optimization.md"
+
+# Sync web pages directly via URL
+python3 scripts/omni_ops.py batch-sync-doc "https://clickhouse.com/docs/en/optimize"
 ```
 
 ## 🤝 Contributing

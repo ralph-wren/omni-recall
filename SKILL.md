@@ -45,11 +45,26 @@ python3 scripts/omni_ops.py sync-instruction "tone" "Professional yet friendly, 
 python3 scripts/omni_ops.py sync-instruction "workflow" "1. Plan -> 2. Implementation -> 3. Verification -> 4. Summary."
 ```
 
-### Batch Synchronize Document (Multi-level Header Splitting)
+### Encrypted Vault (Key-Value Storage)
 ```bash
-# Sync a markdown file, splitting it by headers (H1-H5)
-# Parameters: <file_path> [source_tag] [threshold]
-python3 scripts/omni_ops.py batch-sync-doc "/path/to/doc.md" "tech-stack" 0.9
+# Store an encrypted value
+# Required Env: SUPABASE_SALT
+python3 scripts/omni_ops.py sync-vault "ZHIHU_COOKIE" "your_long_cookie_string"
+
+# Fetch and decrypt a value
+python3 scripts/omni_ops.py fetch-vault "ZHIHU_COOKIE"
+```
+
+### Batch Synchronize Document/URL (Multi-format Splitting)
+```bash
+# Sync a markdown file (H1-H5 Splitting)
+python3 scripts/omni_ops.py batch-sync-doc "/path/to/doc.md" "tag" 0.9
+
+# Sync a plain text/log file (Recursive + Overlap Splitting)
+python3 scripts/omni_ops.py batch-sync-doc "/path/to/notes.txt" "notes" 0.9
+
+# Sync a web page via URL (Recursive + Overlap Splitting)
+python3 scripts/omni_ops.py batch-sync-doc "https://example.com/article" "web-source" 0.9
 ```
 
 ### Fetch Full Context (Identity + Behavior + Recent History)， use this when first time to recall
@@ -130,6 +145,13 @@ create table if not exists public.instructions (
 
 -- Index for instructions similarity search
 create index on public.instructions using ivfflat (embedding vector_cosine_ops);
+
+-- Create the encrypted vault table (Encrypted Key-Value Storage)
+create table if not exists public.vault (
+  key text primary key,          -- Unique variable name
+  value text not null,           -- Encrypted content (AES-256)
+  updated_at timestamptz default now()
+);
 ```
 
 ### 2. Environment Configuration

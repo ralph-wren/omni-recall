@@ -3,7 +3,11 @@ import requests
 import json
 import psycopg2
 import re
+import base64
 from datetime import datetime, timedelta
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import sys
 
 class OmniRecallManager:
@@ -14,6 +18,8 @@ class OmniRecallManager:
     def __init__(self):
         self.apiyi_token = os.environ.get('APIYI_TOKEN')
         self.supabase_password = os.environ.get('SUPABASE_PASSWORD')
+        self.salt = os.environ.get('SUPABASE_SALT')
+        self._cipher = None
         # Standard configuration for TechStack-Handbook infrastructure
         self.db_config = {
             "dbname": "postgres",
@@ -21,6 +27,33 @@ class OmniRecallManager:
             "host": "aws-1-ap-south-1.pooler.supabase.com",
             "port": "6543"
         }
+
+    def _get_cipher(self):
+        if self._cipher:
+            return self._cipher
+        if not self.salt:
+            raise ValueError("Environment variable 'SUPABASE_SALT' is required for encryption/decryption.")
+        
+        # Derive a 32-byte key from the salt
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=b'omni-recall-fixed-salt', # Use a fixed internal salt for KDF
+            iterations=100000,
+        )
+        key = base64.urlsafe_b64encode(kdf.derive(self.salt.encode()))
+        self._cipher = Fernet(key)
+        return self._cipher
+
+    def encrypt(self, text):
+        if not text: return None
+        cipher = self._get_cipher()
+        return cipher.encrypt(text.encode()).decode()
+
+    def decrypt(self, token):
+        if not token: return None
+        cipher = self._get_cipher()
+        return cipher.decrypt(token.encode()).decode()
 
     def _get_embedding(self, text):
         if not self.apiyi_token:
@@ -193,6 +226,55 @@ class OmniRecallManager:
         conn.close()
         return rows
 
+    def sync_vault(self, key, value):
+        """
+        Stores an encrypted value in the vault table.
+        """
+        if not self.supabase_password:
+            raise ValueError("Environment variable 'SUPABASE_PASSWORD' is required for vault uplink.")
+            
+        encrypted_value = self.encrypt(value)
+        conn = psycopg2.connect(password=self.supabase_password, **self.db_config)
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO vault (key, value, updated_at)
+                    VALUES (%s, %s, NOW())
+                    ON CONFLICT (key) 
+                    DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
+                """, (key, encrypted_value))
+            conn.commit()
+            print(f"SUCCESS: Key '{key}' stored securely in vault.")
+        finally:
+            conn.close()
+
+    def fetch_vault(self, key=None):
+        """
+        Retrieves and decrypts value(s) from the vault.
+        """
+        if not self.supabase_password:
+            raise ValueError("Environment variable 'SUPABASE_PASSWORD' is required for vault retrieval.")
+            
+        conn = psycopg2.connect(password=self.supabase_password, **self.db_config)
+        try:
+            with conn.cursor() as cur:
+                if key:
+                    cur.execute("SELECT key, value FROM vault WHERE key = %s", (key,))
+                else:
+                    cur.execute("SELECT key, value FROM vault ORDER BY key ASC")
+                rows = cur.fetchall()
+                
+            results = []
+            for r_key, r_val in rows:
+                try:
+                    decrypted = self.decrypt(r_val)
+                    results.append((r_key, decrypted))
+                except Exception as e:
+                    results.append((r_key, f"[DECRYPTION_ERROR: {str(e)}]"))
+            return results
+        finally:
+            conn.close()
+
     def fetch_full_context(self, days=10, limit=None):
         """
         Combines ALL user profiles, ALL AI instructions, and recent memories into a comprehensive context.
@@ -247,21 +329,101 @@ class OmniRecallManager:
             
         return chunks
 
-    def batch_sync_doc(self, file_path, source_tag=None, threshold=0.9):
+    def _split_general_text(self, text, chunk_size=1000, overlap=200):
         """
-        Reads a markdown file, splits it by headers (H1-H5), and syncs chunks to memories.
+        Recursive character splitting for general text with overlap.
         """
-        if not os.path.exists(file_path):
-            raise FileNotFoundError(f"File not found: {file_path}")
+        if len(text) <= chunk_size:
+            return [text.strip()]
+        
+        separators = ["\n\n", "\n", "。", "！", "？", "；", ". ", "! ", "? ", "; ", " ", ""]
+        chunks = []
+        
+        def recursive_split(content, current_chunk_size, current_overlap):
+            if len(content) <= current_chunk_size:
+                return [content.strip()]
+            
+            # Find the best separator
+            selected_sep = ""
+            for sep in separators:
+                if sep in content:
+                    selected_sep = sep
+                    break
+            
+            # Split by selected separator
+            raw_splits = content.split(selected_sep) if selected_sep else list(content)
+            
+            final_chunks = []
+            current_buffer = ""
+            
+            for s in raw_splits:
+                # Add separator back except for the last one
+                item = s + selected_sep
+                
+                if len(current_buffer) + len(item) <= current_chunk_size:
+                    current_buffer += item
+                else:
+                    if current_buffer:
+                        final_chunks.append(current_buffer.strip())
+                    
+                    # Handle overlap: take last 'overlap' characters from current_buffer
+                    overlap_text = current_buffer[-current_overlap:] if len(current_buffer) > current_overlap else current_buffer
+                    current_buffer = overlap_text + item
+            
+            if current_buffer:
+                final_chunks.append(current_buffer.strip())
+            
+            return final_chunks
 
-        with open(file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
+        return recursive_split(text, chunk_size, overlap)
 
-        if not source_tag:
-            source_tag = os.path.basename(file_path).replace('.md', '').lower()
+    def batch_sync_doc(self, input_source, source_tag=None, threshold=0.9, cookie=None):
+        """
+        Reads a markdown file OR fetches a URL, splits it, and syncs chunks to memories.
+        Supports .md, .txt, .log and web URLs.
+        """
+        content = ""
+        is_url = input_source.startswith(('http://', 'https://'))
+        
+        if is_url:
+            # Handle GitHub blob URLs by converting them to raw URLs
+            if "github.com" in input_source and "/blob/" in input_source:
+                input_source = input_source.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
+            
+            print(f"Fetching content from URL: {input_source}...")
+            
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                "Referer": "https://www.zhihu.com/",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
+            }
+            if cookie:
+                headers["Cookie"] = cookie
+                
+            res = requests.get(input_source, headers=headers, timeout=15)
+            res.raise_for_status()
+            content = res.text
+            if not source_tag:
+                source_tag = input_source.split('/')[-1] or "web-page"
+        else:
+            if not os.path.exists(input_source):
+                raise FileNotFoundError(f"File not found: {input_source}")
+            with open(input_source, 'r', encoding='utf-8') as f:
+                content = f.read()
+            if not source_tag:
+                source_tag = os.path.basename(input_source).replace('.md', '').replace('.txt', '').lower()
 
-        print(f"Splitting '{os.path.basename(file_path)}' into chunks (H1-H5)...\n")
-        chunks = self._split_markdown(content)
+        # Choose splitter based on file type or content
+        if not is_url and input_source.endswith('.md'):
+            print(f"Using Markdown splitter (H1-H5)...")
+            chunks = self._split_markdown(content)
+        else:
+            print(f"Using General Text splitter (Recursive + Overlap)...")
+            chunks = self._split_general_text(content)
+            
         print(f"Found {len(chunks)} logical chunks.")
 
         success_count = 0
@@ -366,6 +528,8 @@ if __name__ == "__main__":
         print("  python3 omni_ops.py fetch-profile [category] [keyword1] [keyword2] ...")
         print("  python3 omni_ops.py sync-instruction <category> <content> [threshold]")
         print("  python3 omni_ops.py fetch-instruction [category] [keyword1] [keyword2] ...")
+        print("  python3 omni_ops.py sync-vault <key> <value>")
+        print("  python3 omni_ops.py fetch-vault [key]")
         print("  python3 omni_ops.py fetch-full-context [days] [limit]")
         print("  python3 omni_ops.py batch-sync-doc <file_path> [source_tag] [threshold]")
         sys.exit(1)
@@ -381,12 +545,13 @@ if __name__ == "__main__":
                 print("SUCCESS: Context synchronized to neural base.")
         elif action == "batch-sync-doc":
             if len(sys.argv) < 3:
-                print("Error: Missing file_path")
+                print("Usage: python3 omni_ops.py batch-sync-doc <file_path_or_url> [source_tag] [threshold] [cookie]")
                 sys.exit(1)
             file_path = sys.argv[2]
             source_tag = sys.argv[3] if len(sys.argv) > 3 else None
             threshold = float(sys.argv[4]) if len(sys.argv) > 4 else 0.9
-            manager.batch_sync_doc(file_path, source_tag, threshold)
+            cookie = sys.argv[5] if len(sys.argv) > 5 else None
+            manager.batch_sync_doc(file_path, source_tag, threshold, cookie=cookie)
         elif action == "sync-profile" and len(sys.argv) > 3:
             category = sys.argv[2]
             content = sys.argv[3]
@@ -415,6 +580,15 @@ if __name__ == "__main__":
             keywords = sys.argv[3:] if len(sys.argv) > 3 else None
             instructions = manager.fetch_instruction(category, keywords)
             print(json.dumps([{"category": i[0], "content": i[1], "metadata": i[2]} for i in instructions], ensure_ascii=False))
+        elif action == "sync-vault" and len(sys.argv) > 3:
+            key = sys.argv[2]
+            value = sys.argv[3]
+            manager.sync_vault(key, value)
+        elif action == "fetch-vault":
+            key = sys.argv[2] if len(sys.argv) > 2 else None
+            results = manager.fetch_vault(key)
+            for k, v in results:
+                print(f"[{k}]: {v}")
         elif action == "fetch-full-context":
             days = int(sys.argv[2]) if len(sys.argv) > 2 else 10
             limit = int(sys.argv[3]) if (len(sys.argv) > 3 and sys.argv[3].lower() != 'none') else None
