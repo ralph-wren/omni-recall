@@ -45,6 +45,18 @@ python3 scripts/omni_ops.py sync-instruction "tone" "Professional yet friendly, 
 python3 scripts/omni_ops.py sync-instruction "workflow" "1. Plan -> 2. Implementation -> 3. Verification -> 4. Summary."
 ```
 
+### Encrypted Nsfw Memory (Sensitive Context)
+```bash
+# Sync sensitive content (Encrypted at rest + Vector embedding)
+python3 scripts/omni_ops.py sync-nsfw "Sensitive information here" "private-tag" 0.9
+
+# Fetch and decrypt sensitive records
+python3 scripts/omni_ops.py fetch-nsfw 30 10 "secret-keyword"
+
+# Fetch full context including nsfw records (Set include_nsfw to true)
+python3 scripts/omni_ops.py fetch-full-context 10 none true
+```
+
 ### Encrypted Vault (Key-Value Storage)
 ```bash
 # Store an encrypted value
@@ -145,6 +157,20 @@ create table if not exists public.instructions (
 
 -- Index for instructions similarity search
 create index on public.instructions using ivfflat (embedding vector_cosine_ops);
+
+-- Create the nsfw matrix (Encrypted Sensitive Memories)
+create table if not exists public.nsfw (
+  id uuid primary key default gen_random_uuid(),
+  content text not null,          -- Encrypted neural content (AES-256)
+  embedding vector(1536),        -- Neural vector (unencrypted for search)
+  metadata jsonb,                -- Engine & session metadata
+  source text,                   -- Uplink source identifier
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- Index for nsfw similarity search
+create index on public.nsfw using ivfflat (embedding vector_cosine_ops);
 
 -- Create the encrypted vault table (Encrypted Key-Value Storage)
 create table if not exists public.vault (

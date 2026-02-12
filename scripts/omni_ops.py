@@ -275,20 +275,111 @@ class OmniRecallManager:
         finally:
             conn.close()
 
-    def fetch_full_context(self, days=10, limit=None):
+    def sync_nsfw(self, content, source="omni-recall-nsfw", threshold=0.9):
+        """
+        Stores encrypted sensitive content in the nsfw table with vector embedding.
+        """
+        if not self.supabase_password:
+            raise ValueError("Environment variable 'SUPABASE_PASSWORD' is required for nsfw uplink.")
+            
+        print("Encoding nsfw content into vector space...")
+        embedding = self._get_embedding(content)
+        encrypted_content = self.encrypt(content)
+        
+        conn = psycopg2.connect(password=self.supabase_password, **self.db_config)
+        try:
+            with conn.cursor() as cur:
+                # Similarity check on decrypted content or encrypted content? 
+                # Better to check on vector distance as usual.
+                print(f"Checking for high-similarity duplicates in nsfw base (threshold={threshold})...")
+                cur.execute("""
+                    SELECT content, 1 - (embedding <=> %s::vector) as similarity 
+                    FROM nsfw 
+                    WHERE 1 - (embedding <=> %s::vector) > %s 
+                    ORDER BY similarity DESC LIMIT 1
+                """, (embedding, embedding, threshold))
+                duplicate = cur.fetchone()
+                
+                if duplicate:
+                    print(f"SKIP: Found existing nsfw entry with {duplicate[1]:.4f} similarity.")
+                    return False
+
+                print("Uplinking to Supabase nsfw cluster...")
+                cur.execute("""
+                    INSERT INTO nsfw (content, embedding, source)
+                    VALUES (%s, %s, %s)
+                """, (encrypted_content, embedding, source))
+            conn.commit()
+            print("SUCCESS: Nsfw context synchronized.")
+            return True
+        finally:
+            conn.close()
+
+    def fetch_nsfw(self, days=10, limit=None, keywords=None):
+        """
+        Retrieves and decrypts records from the nsfw table.
+        """
+        if not self.supabase_password:
+            raise ValueError("Environment variable 'SUPABASE_PASSWORD' is required for nsfw retrieval.")
+            
+        conn = psycopg2.connect(password=self.supabase_password, **self.db_config)
+        try:
+            with conn.cursor() as cur:
+                query = "SELECT content, created_at, source FROM nsfw"
+                params = []
+                
+                conditions = [f"created_at > NOW() - INTERVAL '{days} days'"]
+                
+                # Keywords are tricky with encrypted content. 
+                # We can only filter after decryption unless we decrypt in SQL (not secure).
+                # So we fetch all in range and filter in Python.
+                
+                query += " WHERE " + " AND ".join(conditions)
+                query += " ORDER BY created_at DESC"
+                if limit:
+                    query += " LIMIT %s"
+                    params.append(limit)
+                
+                cur.execute(query, params)
+                rows = cur.fetchall()
+                
+            results = []
+            for enc_content, created_at, source in rows:
+                try:
+                    decrypted = self.decrypt(enc_content)
+                    if keywords:
+                        if isinstance(keywords, str): keywords = [keywords]
+                        if not all(kw.lower() in decrypted.lower() for kw in keywords):
+                            continue
+                    results.append((decrypted, created_at, source))
+                except Exception as e:
+                    results.append((f"[DECRYPTION_ERROR: {str(e)}]", created_at, source))
+            return results
+        finally:
+            conn.close()
+
+    def fetch_full_context(self, days=10, limit=None, include_nsfw=False):
         """
         Combines ALL user profiles, ALL AI instructions, and recent memories into a comprehensive context.
-        Note: Profiles and Instructions are fetched in full (no time limit) to maintain core identity/rules.
+        Note: Profiles and Instructions are fetched in full (no time limit).
+        Optional: include_nsfw=True will pull sensitive records as well.
         """
-        profiles = self.fetch_profile() # Always full retrieval
-        instructions = self.fetch_instruction() # Always full retrieval
-        memories = self.fetch(days=days, limit=limit) # Time-filtered retrieval
+        profiles = self.fetch_profile()
+        instructions = self.fetch_instruction()
+        memories = self.fetch(days=days, limit=limit)
         
-        return {
+        context = {
             "profiles": [{"category": p[0], "content": p[1]} for p in profiles],
             "ai_instructions": [{"category": i[0], "content": i[1]} for i in instructions],
             "recent_memories": [{"content": m[0], "time": str(m[1]), "source": m[2]} for m in memories]
         }
+        
+        if include_nsfw:
+            print("Accessing nsfw vault for sensitive context...")
+            nsfw_data = self.fetch_nsfw(days=days, limit=limit)
+            context["sensitive_memories"] = [{"content": n[0], "time": str(n[1]), "source": n[2]} for n in nsfw_data]
+            
+        return context
 
     def _split_markdown(self, content):
         """
@@ -589,10 +680,23 @@ if __name__ == "__main__":
             results = manager.fetch_vault(key)
             for k, v in results:
                 print(f"[{k}]: {v}")
+        elif action == "sync-nsfw" and len(sys.argv) > 2:
+            content = sys.argv[2]
+            source = sys.argv[3] if len(sys.argv) > 3 else "omni-recall-nsfw"
+            threshold = float(sys.argv[4]) if len(sys.argv) > 4 else 0.9
+            manager.sync_nsfw(content, source, threshold)
+        elif action == "fetch-nsfw":
+            days = int(sys.argv[2]) if len(sys.argv) > 2 else 10
+            limit = int(sys.argv[3]) if (len(sys.argv) > 3 and sys.argv[3].lower() != 'none') else None
+            keywords = sys.argv[4:] if len(sys.argv) > 4 else None
+            results = manager.fetch_nsfw(days, limit, keywords)
+            for r in results:
+                print(f"[{r[1]}] ({r[2]}) {r[0]}")
         elif action == "fetch-full-context":
             days = int(sys.argv[2]) if len(sys.argv) > 2 else 10
             limit = int(sys.argv[3]) if (len(sys.argv) > 3 and sys.argv[3].lower() != 'none') else None
-            context = manager.fetch_full_context(days, limit)
+            include_nsfw = sys.argv[4].lower() == "true" if len(sys.argv) > 4 else False
+            context = manager.fetch_full_context(days, limit, include_nsfw=include_nsfw)
             print(json.dumps(context, ensure_ascii=False))
         else:
             print("Invalid command or missing parameters.")
