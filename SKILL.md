@@ -45,7 +45,7 @@ python3 scripts/omni_ops.py sync-instruction "tone" "Professional yet friendly, 
 python3 scripts/omni_ops.py sync-instruction "workflow" "1. Plan -> 2. Implementation -> 3. Verification -> 4. Summary."
 ```
 
-### Fetch Full Context (Identity + Behavior + Recent History)
+### Fetch Full Context (Identity + Behavior + Recent History)， use this when first time to recall
 ```bash
 # Get ALL profiles + ALL instructions + memories from last 10 days
 # (Profiles and Instructions are always fully retrieved regardless of 'days' parameter)
