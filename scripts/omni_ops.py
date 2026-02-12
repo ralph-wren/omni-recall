@@ -193,10 +193,13 @@ class OmniRecallManager:
         return rows
 
     def fetch_full_context(self, days=10, limit=None):
-        """Combines all user profiles, AI instructions, and recent memories into a comprehensive context."""
-        profiles = self.fetch_profile()
-        instructions = self.fetch_instruction()
-        memories = self.fetch(days=days, limit=limit)
+        """
+        Combines ALL user profiles, ALL AI instructions, and recent memories into a comprehensive context.
+        Note: Profiles and Instructions are fetched in full (no time limit) to maintain core identity/rules.
+        """
+        profiles = self.fetch_profile() # Always full retrieval
+        instructions = self.fetch_instruction() # Always full retrieval
+        memories = self.fetch(days=days, limit=limit) # Time-filtered retrieval
         
         return {
             "profiles": [{"category": p[0], "content": p[1]} for p in profiles],

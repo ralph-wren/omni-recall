@@ -65,7 +65,8 @@ python3 scripts/omni_ops.py fetch-instruction "workflow"
 
 ### Fetch Full Context (Identity + Behavior + Recent History)
 ```bash
-# Get all profiles + all instructions + memories from last 7 days
+# Get ALL profiles + ALL instructions + memories from last 7 days
+# (Profiles and Instructions are always fully retrieved regardless of 'days' parameter)
 python3 scripts/omni_ops.py fetch-full-context 7
 ```
 

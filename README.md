@@ -28,19 +28,34 @@ npx skills add https://github.com/[YOUR_GITHUB_USERNAME]/omni-recall --skill omn
    - `APIYI_TOKEN`: Your API key from [apiyi.com](https://api.apiyi.com).
    - `SUPABASE_PASSWORD`: Your database password.
 
-## 📖 Usage
+## 🧠 Core Methodology
 
-Once installed, your agent will have access to the instructions in `SKILL.md`. You can also use the CLI directly:
+Omni-Recall operates on a **Tri-Matrix Architecture**:
+1.  **`memories`**: Temporal session logs (What happened).
+2.  **`profiles`**: Persistent user identity (Who you are).
+3.  **`instructions`**: Behavioral constraints (How I behave).
 
+**CRITICAL**: Always prefer `fetch-full-context` over simple `fetch` to ensure the AI is fully aligned with your persona, rules, and history.
+
+## 🛠 Usage Examples
+
+### 1. Full Context Realignment (Recommended)
 ```bash
-# Sync current state
-python3 omni-recall/scripts/omni_ops.py sync "User prefers Tailwind CSS for frontend."
+# Retrieve ALL Profiles + ALL Instructions + Memories from last 7 days
+# (Profiles and Instructions have NO time/limit constraints)
+python3 scripts/omni_ops.py fetch-full-context 7
+```
 
-# Fetch recent context
-python3 omni-recall/scripts/omni_ops.py fetch 7
+### 2. Manual Synchronization
+```bash
+# Sync session state
+python3 scripts/omni_ops.py sync "Detailed summary" "session_tag"
 
-# Search context by multiple keywords (AND logic)
-python3 omni-recall/scripts/omni_ops.py fetch 30 none "tailwind" "config"
+# Sync user profile (Role/Preference)
+python3 scripts/omni_ops.py sync-profile "persona" "Senior AI Engineer"
+
+# Sync AI instructions (Tone/Rules)
+python3 scripts/omni_ops.py sync-instruction "tone" "Professional and gentle"
 ```
 
 ## 🤝 Contributing
