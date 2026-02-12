@@ -2,6 +2,7 @@ import os
 import requests
 import json
 import psycopg2
+import re
 from datetime import datetime, timedelta
 import sys
 
@@ -207,6 +208,75 @@ class OmniRecallManager:
             "recent_memories": [{"content": m[0], "time": str(m[1]), "source": m[2]} for m in memories]
         }
 
+    def _split_markdown(self, content):
+        """
+        Splits markdown content into logical chunks based on headers (up to level 5).
+        """
+        # Matches #, ##, ###, ####, ##### headers at the start of a line
+        header_pattern = r'\n(?=#{1,5} )'
+        sections = re.split(header_pattern, content)
+        chunks = []
+        
+        current_chunk = ""
+        for section in sections:
+            if not section.strip():
+                continue
+            
+            # If a single section is still very large (> 2000 chars), we might want to split it further
+            # but usually, H1-H5 headers cover most logical breaks.
+            if len(section) > 2000:
+                # Fallback: if no smaller headers, split by paragraphs
+                sub_sections = re.split(r'\n\n', section)
+                for sub in sub_sections:
+                    if not sub.strip():
+                        continue
+                    if len(current_chunk) + len(sub) > 2000:
+                        if current_chunk: chunks.append(current_chunk.strip())
+                        current_chunk = sub
+                    else:
+                        current_chunk += "\n\n" + sub
+            else:
+                if len(current_chunk) + len(section) > 2000:
+                    if current_chunk: chunks.append(current_chunk.strip())
+                    current_chunk = section
+                else:
+                    current_chunk += "\n" + section
+        
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+            
+        return chunks
+
+    def batch_sync_doc(self, file_path, source_tag=None, threshold=0.9):
+        """
+        Reads a markdown file, splits it by headers (H1-H5), and syncs chunks to memories.
+        """
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        if not source_tag:
+            source_tag = os.path.basename(file_path).replace('.md', '').lower()
+
+        print(f"Splitting '{os.path.basename(file_path)}' into chunks (H1-H5)...\n")
+        chunks = self._split_markdown(content)
+        print(f"Found {len(chunks)} logical chunks.")
+
+        success_count = 0
+        skip_count = 0
+
+        for i, chunk in enumerate(chunks):
+            print(f"Processing chunk {i+1}/{len(chunks)}...", end="\r")
+            if self.sync(chunk, source=source_tag, threshold=threshold):
+                success_count += 1
+            else:
+                skip_count += 1
+        
+        print(f"\nBatch sync completed: {success_count} synced, {skip_count} skipped.")
+        return success_count, skip_count
+
     def sync_profile(self, category, content, threshold=0.9):
         """Synchronizes user profile (role, preference, setting) with duplicate detection."""
         if not self.supabase_password:
@@ -297,6 +367,7 @@ if __name__ == "__main__":
         print("  python3 omni_ops.py sync-instruction <category> <content> [threshold]")
         print("  python3 omni_ops.py fetch-instruction [category] [keyword1] [keyword2] ...")
         print("  python3 omni_ops.py fetch-full-context [days] [limit]")
+        print("  python3 omni_ops.py batch-sync-doc <file_path> [source_tag] [threshold]")
         sys.exit(1)
 
     action = sys.argv[1]
@@ -308,6 +379,14 @@ if __name__ == "__main__":
             threshold = float(sys.argv[4]) if len(sys.argv) > 4 else 0.9
             if manager.sync(content, source, threshold):
                 print("SUCCESS: Context synchronized to neural base.")
+        elif action == "batch-sync-doc":
+            if len(sys.argv) < 3:
+                print("Error: Missing file_path")
+                sys.exit(1)
+            file_path = sys.argv[2]
+            source_tag = sys.argv[3] if len(sys.argv) > 3 else None
+            threshold = float(sys.argv[4]) if len(sys.argv) > 4 else 0.9
+            manager.batch_sync_doc(file_path, source_tag, threshold)
         elif action == "sync-profile" and len(sys.argv) > 3:
             category = sys.argv[2]
             content = sys.argv[3]

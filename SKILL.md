@@ -45,6 +45,13 @@ python3 scripts/omni_ops.py sync-instruction "tone" "Professional yet friendly, 
 python3 scripts/omni_ops.py sync-instruction "workflow" "1. Plan -> 2. Implementation -> 3. Verification -> 4. Summary."
 ```
 
+### Batch Synchronize Document (Multi-level Header Splitting)
+```bash
+# Sync a markdown file, splitting it by headers (H1-H5)
+# Parameters: <file_path> [source_tag] [threshold]
+python3 scripts/omni_ops.py batch-sync-doc "/path/to/doc.md" "tech-stack" 0.9
+```
+
 ### Fetch Full Context (Identity + Behavior + Recent History)， use this when first time to recall
 ```bash
 # Get ALL profiles + ALL instructions + memories from last 10 days

@@ -16,10 +16,8 @@ Omni-Recall is a standardized Agent Skill for Trae, Cursor, and other AI coding 
 To install **Omni-Recall** in your current project, run the following command in your terminal:
 
 ```bash
-npx skills add https://github.com/[YOUR_GITHUB_USERNAME]/omni-recall --skill omni-recall
+npx skills add ralph-wren/omni-recall
 ```
-
-*Note: Replace `[YOUR_GITHUB_USERNAME]` with your actual GitHub username after pushing the repository.*
 
 ## ⚙️ Configuration
 
@@ -56,6 +54,12 @@ python3 scripts/omni_ops.py sync-profile "persona" "Senior AI Engineer"
 
 # Sync AI instructions (Tone/Rules)
 python3 scripts/omni_ops.py sync-instruction "tone" "Professional and gentle"
+```
+
+### 3. Batch Sync Documentation
+```bash
+# Automatically split markdown by H1-H5 headers and sync
+python3 scripts/omni_ops.py batch-sync-doc "docs/spark_optimization.md"
 ```
 
 ## 🤝 Contributing
