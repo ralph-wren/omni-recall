@@ -68,7 +68,7 @@ class OmniRecallManager:
             raise Exception(f"Neural encoding failed: {res.text}")
         return res.json()['data'][0]['embedding']
 
-    def sync(self, content, source="omni-recall-sync", threshold=0.9):
+    def sync(self, content, source="omni-recall-sync", threshold=0.9, category="general", importance=0.5):
         """Synchronizes content to the neural knowledge base with duplicate detection."""
         if not self.supabase_password:
             raise ValueError("Environment variable 'SUPABASE_PASSWORD' is required for database uplink.")
@@ -106,16 +106,16 @@ class OmniRecallManager:
         }
         
         cur.execute("""
-            INSERT INTO memories (content, embedding, metadata, source)
-            VALUES (%s, %s, %s, %s)
-        """, (content, embedding, json.dumps(metadata), source))
+            INSERT INTO memories (content, embedding, metadata, source, category, importance)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (content, embedding, json.dumps(metadata), source, category, importance))
         
         conn.commit()
         cur.close()
         conn.close()
         return True
 
-    def fetch(self, days=10, limit=None, keywords=None):
+    def fetch(self, days=10, limit=None, keywords=None, category=None):
         """Retrieves historical context from the neural knowledge base."""
         if not self.supabase_password:
             raise ValueError("Environment variable 'SUPABASE_PASSWORD' is required for context retrieval.")
@@ -125,8 +125,12 @@ class OmniRecallManager:
         
         since_date = datetime.now() - timedelta(days=days)
         
-        query = "SELECT content, created_at, source, metadata FROM memories WHERE created_at >= %s"
+        query = "SELECT content, created_at, source, metadata, category, importance FROM memories WHERE created_at >= %s"
         params = [since_date]
+
+        if category:
+            query += " AND category = %s"
+            params.append(category)
 
         if keywords:
             if isinstance(keywords, str):
@@ -372,7 +376,7 @@ class OmniRecallManager:
         context = {
             "ai_instructions": [{"category": i[0], "content": i[1]} for i in instructions],
             "profiles": [{"category": p[0], "content": p[1]} for p in profiles],
-            "recent_memories": [{"content": m[0], "time": str(m[1]), "source": m[2]} for m in memories]
+            "recent_memories": [{"content": m[0], "time": str(m[1]), "source": m[2], "category": m[4], "importance": m[5]} for m in memories]
         }
         
         if include_nsfw:
@@ -469,7 +473,7 @@ class OmniRecallManager:
 
         return recursive_split(text, chunk_size, overlap)
 
-    def batch_sync_doc(self, input_source, source_tag=None, threshold=0.9, cookie=None):
+    def batch_sync_doc(self, input_source, source_tag=None, threshold=0.9, cookie=None, category="general", importance=0.5):
         """
         Reads a markdown file OR fetches a URL, splits it, and syncs chunks to memories.
         Supports .md, .txt, .log and web URLs.
@@ -523,7 +527,7 @@ class OmniRecallManager:
 
         for i, chunk in enumerate(chunks):
             print(f"Processing chunk {i+1}/{len(chunks)}...", end="\r")
-            if self.sync(chunk, source=source_tag, threshold=threshold):
+            if self.sync(chunk, source=source_tag, threshold=threshold, category=category, importance=importance):
                 success_count += 1
             else:
                 skip_count += 1
@@ -614,8 +618,8 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Omni-Recall Engine CLI (Default Language: zh-CN)")
         print("Usage:")
-        print("  python3 omni_ops.py sync 'content' [source] [threshold]")
-        print("  python3 omni_ops.py fetch [days] [limit] [keyword1] [keyword2] ...")
+        print("  python3 omni_ops.py sync 'content' [source] [threshold] [category] [importance]")
+        print("  python3 omni_ops.py fetch [days] [limit] [category] [keyword1] [keyword2] ...")
         print("  python3 omni_ops.py sync-profile <category> <content> [threshold]")
         print("  python3 omni_ops.py fetch-profile [category] [keyword1] [keyword2] ...")
         print("  python3 omni_ops.py sync-instruction <category> <content> [threshold]")
@@ -623,7 +627,7 @@ if __name__ == "__main__":
         print("  python3 omni_ops.py sync-vault <key> <value>")
         print("  python3 omni_ops.py fetch-vault [key]")
         print("  python3 omni_ops.py fetch-full-context [days] [limit]")
-        print("  python3 omni_ops.py batch-sync-doc <file_path> [source_tag] [threshold]")
+        print("  python3 omni_ops.py batch-sync-doc <file_path> [source_tag] [threshold] [category] [importance]")
         sys.exit(1)
 
     action = sys.argv[1]
@@ -633,17 +637,21 @@ if __name__ == "__main__":
             content = sys.argv[2]
             source = sys.argv[3] if len(sys.argv) > 3 else "omni-manual-uplink"
             threshold = float(sys.argv[4]) if len(sys.argv) > 4 else 0.9
-            if manager.sync(content, source, threshold):
+            category = sys.argv[5] if len(sys.argv) > 5 else "general"
+            importance = float(sys.argv[6]) if len(sys.argv) > 6 else 0.5
+            if manager.sync(content, source, threshold, category, importance):
                 print("SUCCESS: Context synchronized to neural base.")
         elif action == "batch-sync-doc":
             if len(sys.argv) < 3:
-                print("Usage: python3 omni_ops.py batch-sync-doc <file_path_or_url> [source_tag] [threshold] [cookie]")
+                print("Usage: python3 omni_ops.py batch-sync-doc <file_path_or_url> [source_tag] [threshold] [cookie] [category] [importance]")
                 sys.exit(1)
             file_path = sys.argv[2]
             source_tag = sys.argv[3] if len(sys.argv) > 3 else None
             threshold = float(sys.argv[4]) if len(sys.argv) > 4 else 0.9
-            cookie = sys.argv[5] if len(sys.argv) > 5 else None
-            manager.batch_sync_doc(file_path, source_tag, threshold, cookie=cookie)
+            cookie = sys.argv[5] if (len(sys.argv) > 5 and sys.argv[5].lower() != 'none') else None
+            category = sys.argv[6] if len(sys.argv) > 6 else "general"
+            importance = float(sys.argv[7]) if len(sys.argv) > 7 else 0.5
+            manager.batch_sync_doc(file_path, source_tag, threshold, cookie=cookie, category=category, importance=importance)
         elif action == "sync-profile" and len(sys.argv) > 3:
             category = sys.argv[2]
             content = sys.argv[3]
@@ -653,9 +661,10 @@ if __name__ == "__main__":
         elif action == "fetch":
             days = int(sys.argv[2]) if len(sys.argv) > 2 else 10
             limit = int(sys.argv[3]) if (len(sys.argv) > 3 and sys.argv[3].lower() != 'none') else None
-            keywords = sys.argv[4:] if len(sys.argv) > 4 else None
-            memories = manager.fetch(days, limit, keywords)
-            print(json.dumps([{"content": m[0], "time": str(m[1]), "source": m[2], "metadata": m[3]} for m in memories], ensure_ascii=False))
+            category = sys.argv[4] if (len(sys.argv) > 4 and sys.argv[4].lower() != 'none') else None
+            keywords = sys.argv[5:] if len(sys.argv) > 5 else None
+            memories = manager.fetch(days, limit, keywords, category)
+            print(json.dumps([{"content": m[0], "time": str(m[1]), "source": m[2], "metadata": m[3], "category": m[4], "importance": m[5]} for m in memories], ensure_ascii=False))
         elif action == "fetch-profile":
             category = sys.argv[2] if (len(sys.argv) > 2 and sys.argv[2].lower() != 'none') else None
             keywords = sys.argv[3:] if len(sys.argv) > 3 else None

@@ -10,9 +10,9 @@ Omni-Recall is a high-performance memory management skill designed for AI agents
 ## 🚀 Core Capabilities
 
 1.  **Neural Synchronization (`sync`)**:
-    Encodes current session state, user preferences, and operational steps into 1536-dimensional vectors using OpenAI's `text-embedding-3-small` via APIYI. **Includes automatic duplicate detection** (skips if cosine similarity > 0.9).
+    Encodes current session state, user preferences, and operational steps into 1536-dimensional vectors using OpenAI's `text-embedding-3-small` via APIYI. **Includes automatic duplicate detection** (skips if cosine similarity > 0.9). Supports optional `category` and `importance` fields.
 2.  **Contextual Retrieval (`fetch`)**:
-    Pulls historical neural records from the last N days to re-establish the agent's mental model and context. Supports optional multiple keyword filtering (AND logic).
+    Pulls historical neural records from the last N days to re-establish the agent's mental model and context. Supports optional multiple keyword filtering (AND logic) and `category` filtering.
 3.  **User Profile Management (`sync-profile` / `fetch-profile`)**:
     Manages user roles, preferences, settings, and personas in a dedicated `profiles` matrix. Unlike `memories`, this table stores stable personal attributes rather than session logs.
 4.  **AI Instruction Management (`sync-instruction` / `fetch-instruction`)**:
@@ -24,7 +24,11 @@ Omni-Recall is a high-performance memory management skill designed for AI agents
 
 ### Synchronize Session Context
 ```bash
+# Basic sync
 python3 scripts/omni_ops.py sync "User is interested in Python optimization." "session-tag" 0.9
+
+# Sync with category and importance
+python3 scripts/omni_ops.py sync "New tech stack insight" "research" 0.9 "technical" 0.8
 ```
 
 ### Synchronize User Profile
@@ -119,11 +123,13 @@ create extension if not exists vector;
 
 -- Create the neural memory matrix
 create table if not exists public.memories (
-  id uuid primary key default gen_random_uuid(),
+  id bigint primary key generated always as identity,
   content text not null,          -- Raw neural content
   embedding vector(1536),        -- Neural vector (text-embedding-3-small)
   metadata jsonb,                -- Engine & session metadata
   source text,                   -- Uplink source identifier
+  category text default 'general',-- Memory category
+  importance real default 0.5,   -- Memory importance weight (0.0-1.0)
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
