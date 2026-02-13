@@ -52,8 +52,17 @@ class OmniRecallManager:
 
     def decrypt(self, token):
         if not token: return None
+        # Basic check to see if it might be a Fernet token (starts with gAAAA)
+        # If decryption fails or it's not a token, return as-is
+        if not isinstance(token, str) or not token.startswith("gAAAA"):
+            return token
+            
         cipher = self._get_cipher()
-        return cipher.decrypt(token.encode()).decode()
+        try:
+            return cipher.decrypt(token.encode()).decode()
+        except Exception:
+            # Fallback: if decryption fails, it might be plain text that happens to start with gAAAA
+            return token
 
     def _get_embedding(self, text):
         if not self.apiyi_token:
@@ -115,29 +124,28 @@ class OmniRecallManager:
         conn.close()
         return True
 
-    def fetch(self, days=10, limit=None, keywords=None, category=None):
+    def fetch(self, days=None, limit=None, keywords=None, category=None):
         """Retrieves historical context from the neural knowledge base."""
         if not self.supabase_password:
-            raise ValueError("Environment variable 'SUPABASE_PASSWORD' is required for context retrieval.")
+            raise ValueError("Environment variable 'SUPABASE_PASSWORD' is required for database retrieval.")
             
         conn = psycopg2.connect(password=self.supabase_password, **self.db_config)
         cur = conn.cursor()
         
-        since_date = datetime.now() - timedelta(days=days)
+        query = "SELECT content, created_at, source, metadata, category, importance FROM memories"
+        conditions = []
+        params = []
         
-        query = "SELECT content, created_at, source, metadata, category, importance FROM memories WHERE created_at >= %s"
-        params = [since_date]
-
+        if days:
+            conditions.append("created_at >= %s")
+            params.append(datetime.now() - timedelta(days=days))
+            
         if category:
-            query += " AND category = %s"
+            conditions.append("category = %s")
             params.append(category)
-
-        if keywords:
-            if isinstance(keywords, str):
-                keywords = [keywords]
-            for kw in keywords:
-                query += " AND content ILIKE %s"
-                params.append(f"%{kw}%")
+            
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
             
         query += " ORDER BY created_at DESC"
         
@@ -145,12 +153,18 @@ class OmniRecallManager:
             query += " LIMIT %s"
             params.append(limit)
             
-        cur.execute(query, tuple(params))
-        rows = cur.fetchall()
+        cur.execute(query, params)
+        memories = cur.fetchall()
         
         cur.close()
         conn.close()
-        return rows
+        
+        # Keyword filtering (post-fetch for simplicity)
+        if keywords:
+            if isinstance(keywords, str): keywords = [keywords]
+            memories = [m for m in memories if all(kw.lower() in m[0].lower() for kw in keywords)]
+            
+        return memories
 
     def sync_instruction(self, category, content, threshold=0.9):
         """Synchronizes AI instruction (tone, workflow, rule) with duplicate detection."""
@@ -279,9 +293,9 @@ class OmniRecallManager:
         finally:
             conn.close()
 
-    def sync_nsfw(self, content, source="omni-recall-nsfw", threshold=0.9):
+    def sync_nsfw(self, content, source="omni-recall-nsfw", threshold=0.9, category="general", importance=0.5):
         """
-        Stores encrypted sensitive content in the nsfw table with vector embedding.
+        Stores encrypted sensitive content in the nsfw_memories table with vector embedding.
         """
         if not self.supabase_password:
             raise ValueError("Environment variable 'SUPABASE_PASSWORD' is required for nsfw uplink.")
@@ -298,7 +312,7 @@ class OmniRecallManager:
                 print(f"Checking for high-similarity duplicates in nsfw base (threshold={threshold})...")
                 cur.execute("""
                     SELECT content, 1 - (embedding <=> %s::vector) as similarity 
-                    FROM nsfw 
+                    FROM nsfw_memories 
                     WHERE 1 - (embedding <=> %s::vector) > %s 
                     ORDER BY similarity DESC LIMIT 1
                 """, (embedding, embedding, threshold))
@@ -310,18 +324,18 @@ class OmniRecallManager:
 
                 print("Uplinking to Supabase nsfw cluster...")
                 cur.execute("""
-                    INSERT INTO nsfw (content, embedding, source)
-                    VALUES (%s, %s, %s)
-                """, (encrypted_content, embedding, source))
+                    INSERT INTO nsfw_memories (content, embedding, source, category, importance)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (encrypted_content, embedding, source, category, importance))
             conn.commit()
             print("SUCCESS: Nsfw context synchronized.")
             return True
         finally:
             conn.close()
 
-    def fetch_nsfw(self, days=10, limit=None, keywords=None):
+    def fetch_nsfw(self, days=None, limit=None, keywords=None, category=None):
         """
-        Retrieves and decrypts records from the nsfw table.
+        Retrieves and decrypts records from the nsfw_memories table.
         """
         if not self.supabase_password:
             raise ValueError("Environment variable 'SUPABASE_PASSWORD' is required for nsfw retrieval.")
@@ -329,16 +343,20 @@ class OmniRecallManager:
         conn = psycopg2.connect(password=self.supabase_password, **self.db_config)
         try:
             with conn.cursor() as cur:
-                query = "SELECT content, created_at, source FROM nsfw"
+                query = "SELECT content, created_at, source, category, importance FROM nsfw_memories"
                 params = []
+                conditions = []
                 
-                conditions = [f"created_at > NOW() - INTERVAL '{days} days'"]
+                if days:
+                    conditions.append(f"created_at > NOW() - INTERVAL '{days} days'")
                 
-                # Keywords are tricky with encrypted content. 
-                # We can only filter after decryption unless we decrypt in SQL (not secure).
-                # So we fetch all in range and filter in Python.
+                if category:
+                    conditions.append("category = %s")
+                    params.append(category)
                 
-                query += " WHERE " + " AND ".join(conditions)
+                if conditions:
+                    query += " WHERE " + " AND ".join(conditions)
+                    
                 query += " ORDER BY created_at DESC"
                 if limit:
                     query += " LIMIT %s"
@@ -348,16 +366,16 @@ class OmniRecallManager:
                 rows = cur.fetchall()
                 
             results = []
-            for enc_content, created_at, source in rows:
+            for enc_content, created_at, source, cat, imp in rows:
                 try:
                     decrypted = self.decrypt(enc_content)
                     if keywords:
                         if isinstance(keywords, str): keywords = [keywords]
                         if not all(kw.lower() in decrypted.lower() for kw in keywords):
                             continue
-                    results.append((decrypted, created_at, source))
+                    results.append((decrypted, created_at, source, cat, imp))
                 except Exception as e:
-                    results.append((f"[DECRYPTION_ERROR: {str(e)}]", created_at, source))
+                    results.append((f"[DECRYPTION_ERROR: {str(e)}]", created_at, source, cat, imp))
             return results
         finally:
             conn.close()
@@ -382,7 +400,7 @@ class OmniRecallManager:
         if include_nsfw:
             print("Accessing nsfw vault for sensitive context...")
             nsfw_data = self.fetch_nsfw(days=days, limit=limit)
-            context["sensitive_memories"] = [{"content": n[0], "time": str(n[1]), "source": n[2]} for n in nsfw_data]
+            context["sensitive_memories"] = [{"content": n[0], "time": str(n[1]), "source": n[2], "category": n[3], "importance": n[4]} for n in nsfw_data]
             
         return context
 
@@ -659,7 +677,7 @@ if __name__ == "__main__":
             if manager.sync_profile(category, content, threshold):
                 print(f"SUCCESS: Profile '{category}' synchronized.")
         elif action == "fetch":
-            days = int(sys.argv[2]) if len(sys.argv) > 2 else 10
+            days = int(sys.argv[2]) if (len(sys.argv) > 2 and sys.argv[2].lower() != 'none') else None
             limit = int(sys.argv[3]) if (len(sys.argv) > 3 and sys.argv[3].lower() != 'none') else None
             category = sys.argv[4] if (len(sys.argv) > 4 and sys.argv[4].lower() != 'none') else None
             keywords = sys.argv[5:] if len(sys.argv) > 5 else None
@@ -694,16 +712,19 @@ if __name__ == "__main__":
             content = sys.argv[2]
             source = sys.argv[3] if len(sys.argv) > 3 else "omni-recall-nsfw"
             threshold = float(sys.argv[4]) if len(sys.argv) > 4 else 0.9
-            manager.sync_nsfw(content, source, threshold)
+            category = sys.argv[5] if len(sys.argv) > 5 else "general"
+            importance = float(sys.argv[6]) if len(sys.argv) > 6 else 0.5
+            manager.sync_nsfw(content, source, threshold, category, importance)
         elif action == "fetch-nsfw":
-            days = int(sys.argv[2]) if len(sys.argv) > 2 else 10
+            days = int(sys.argv[2]) if (len(sys.argv) > 2 and sys.argv[2].lower() != 'none') else None
             limit = int(sys.argv[3]) if (len(sys.argv) > 3 and sys.argv[3].lower() != 'none') else None
-            keywords = sys.argv[4:] if len(sys.argv) > 4 else None
-            results = manager.fetch_nsfw(days, limit, keywords)
+            category = sys.argv[4] if (len(sys.argv) > 4 and sys.argv[4].lower() != 'none') else None
+            keywords = sys.argv[5:] if len(sys.argv) > 5 else None
+            results = manager.fetch_nsfw(days, limit, keywords, category)
             for r in results:
-                print(f"[{r[1]}] ({r[2]}) {r[0]}")
+                print(f"[{r[1]}] ({r[2]}) [{r[3]}] ({r[4]}) {r[0]}")
         elif action == "fetch-full-context":
-            days = int(sys.argv[2]) if len(sys.argv) > 2 else 10
+            days = int(sys.argv[2]) if (len(sys.argv) > 2 and sys.argv[2].lower() != 'none') else None
             limit = int(sys.argv[3]) if (len(sys.argv) > 3 and sys.argv[3].lower() != 'none') else None
             include_nsfw = sys.argv[4].lower() == "true" if len(sys.argv) > 4 else False
             context = manager.fetch_full_context(days, limit, include_nsfw=include_nsfw)

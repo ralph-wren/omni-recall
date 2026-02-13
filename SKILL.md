@@ -166,18 +166,20 @@ create table if not exists public.instructions (
 create index on public.instructions using ivfflat (embedding vector_cosine_ops);
 
 -- Create the nsfw matrix (Encrypted Sensitive Memories)
-create table if not exists public.nsfw (
-  id uuid primary key default gen_random_uuid(),
+create table if not exists public.nsfw_memories (
+  id bigint primary key generated always as identity,
   content text not null,          -- Encrypted neural content (AES-256)
   embedding vector(1536),        -- Neural vector (unencrypted for search)
   metadata jsonb,                -- Engine & session metadata
   source text,                   -- Uplink source identifier
+  category text default 'general',-- Memory category
+  importance real default 0.5,   -- Memory importance weight (0.0-1.0)
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
 
--- Index for nsfw similarity search
-create index on public.nsfw using ivfflat (embedding vector_cosine_ops);
+-- Index for nsfw_memories similarity search
+create index on public.nsfw_memories using ivfflat (embedding vector_cosine_ops);
 
 -- Create the encrypted vault table (Encrypted Key-Value Storage)
 create table if not exists public.vault (
