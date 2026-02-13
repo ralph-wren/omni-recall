@@ -80,9 +80,10 @@ python3 scripts/omni_ops.py batch-sync-doc "https://example.com/article" "web-so
 ```
 
 ### Fetch Full Context (Identity + Behavior + Recent History)， use this when first time to recall
+**Priority Order**: 1. `instructions` (Persona/Rules) > 2. `profiles` (User Info/Preferences) > 3. `memories` (Session History).
 ```bash
-# Get ALL profiles + ALL instructions + memories from last 10 days
-# (Profiles and Instructions are always fully retrieved regardless of 'days' parameter)
+# Get ALL instructions + ALL profiles + memories from last 10 days
+# (Instructions and Profiles are always fully retrieved regardless of 'days' parameter)
 python3 scripts/omni_ops.py fetch-full-context 10
 ```
 
@@ -189,6 +190,7 @@ Required variables for the neural uplink:
 - **Dimensionality**: 1536-D Vector Space.
 - **Protocol**: HTTPS / WebSockets (via Psycopg2).
 - **Latency**: Optimized for real-time sub-second synchronization.
+- **Context Prioritization**: `instructions` > `profiles` > `memories`. This ensures the AI adheres to its persona and rules before considering user-specific traits or historical context.
 
 ## ⚠️ Notes
 - Ensure `psycopg2` and `requests` are present in the host environment.
