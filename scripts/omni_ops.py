@@ -368,9 +368,10 @@ class OmniRecallManager:
         instructions = self.fetch_instruction()
         memories = self.fetch(days=days, limit=limit)
         
+        # Prioritize: 1. Instructions (Persona), 2. Profiles (User info), 3. Memories (History)
         context = {
-            "profiles": [{"category": p[0], "content": p[1]} for p in profiles],
             "ai_instructions": [{"category": i[0], "content": i[1]} for i in instructions],
+            "profiles": [{"category": p[0], "content": p[1]} for p in profiles],
             "recent_memories": [{"content": m[0], "time": str(m[1]), "source": m[2]} for m in memories]
         }
         
