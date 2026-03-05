@@ -217,7 +217,7 @@ Required variables for the neural uplink:
 ## 🧠 Engineering Principles
 - **Dimensionality**: 1536-D Vector Space (text-embedding-3-small)
 - **Indexing**: HNSW (Hierarchical Navigable Small World) for production-grade performance
-- **Search**: Cosine similarity with configurable thresholds (default: 0.6)
+- **Search**: Cosine similarity with configurable thresholds (default: 0.5)
 - **Protocol**: HTTPS / WebSockets (via Psycopg2)
 - **Latency**: Optimized for real-time sub-second synchronization
 - **Context Prioritization**: `instructions` > `profiles` > `memories`
