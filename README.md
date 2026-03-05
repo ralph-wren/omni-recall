@@ -48,7 +48,7 @@ python3 scripts/omni_ops.py fetch-full-context 7
 
 ### 2. Vector Semantic Search (Command Line)
 ```bash
-# Search memories with natural language query (default threshold: 0.6)
+# Search memories with natural language query (default threshold: 0.5)
 python3 scripts/omni_ops.py fetch "如何优化数据库性能" none 10
 # Parameters: <query_text> [days] [limit] [category] [similarity_threshold]
 
@@ -56,11 +56,11 @@ python3 scripts/omni_ops.py fetch "如何优化数据库性能" none 10
 python3 scripts/omni_ops.py fetch "pgvector 索引优化" none 10 none 0.7
 
 # Search instructions
-python3 scripts/omni_ops.py fetch-instruction "代码风格规范" none 0.6 5
+python3 scripts/omni_ops.py fetch-instruction "代码风格规范" none 0.5 5
 # Parameters: <query_text> [category] [similarity_threshold] [limit]
 
 # Search profiles
-python3 scripts/omni_ops.py fetch-profile "用户技能背景" none 0.6 5
+python3 scripts/omni_ops.py fetch-profile "用户技能背景" none 0.5 5
 # Parameters: <query_text> [category] [similarity_threshold] [limit]
 
 # List all records without filtering (use 'none' as query)
@@ -76,7 +76,7 @@ manager = OmniRecallManager()
 # Vector-based semantic search - finds similar content by meaning
 results = manager.fetch(
     query_text="如何优化数据库查询性能",  # Natural language query
-    similarity_threshold=0.6,  # Default: 0.6 (recommended)
+    similarity_threshold=0.5,  # Default: 0.5 (recommended)
     limit=10,
     days=30
 )
@@ -88,7 +88,7 @@ for content, created_at, source, metadata, category, importance, similarity in r
 # Search with different thresholds
 instructions = manager.fetch_instruction(
     query_text="代码风格规范",
-    similarity_threshold=0.6  # 0.6 = balanced, 0.7 = precise, 0.5 = exploratory
+    similarity_threshold=0.5  # 0.5 = balanced, 0.6 = precise, 0.7 = very precise
 )
 ```
 
@@ -117,12 +117,28 @@ python3 scripts/omni_ops.py batch-sync-doc "https://clickhouse.com/docs/en/optim
 
 | Threshold | Description | Use Case |
 |-----------|-------------|----------|
-| **0.6** | **Balanced (Default)** ⭐ | General search, best for most cases |
-| 0.7-0.8 | High precision | Exact matches, specific queries |
-| 0.5 | Exploratory | Broad search, discover related content |
+| **0.5** | **Balanced (Default)** ⭐ | General search, returns more results |
+| 0.6-0.65 | Higher precision | More specific matches |
+| 0.7-0.8 | High precision | Exact matches, very specific queries |
 | 0.8+ | Very precise | Almost exact matches only |
 
-**Why 0.6?** Based on real-world testing, Chinese semantic search typically scores 0.55-0.65 for highly relevant content. Using 0.7 would filter out many relevant results.
+**Why 0.5?** Based on real-world testing, threshold 0.5 provides good balance between recall and precision, returning an average of 3-10 relevant results. Works well for both phrase queries and single-word queries.
+
+### Query Best Practices
+
+**✅ Recommended: Use phrase queries (3-5 words)**
+```bash
+# Good - specific phrases get 0.60-0.66 similarity
+python3 scripts/omni_ops.py fetch "pgvector 索引优化" none 10
+python3 scripts/omni_ops.py fetch "如何优化数据库性能" none 10
+```
+
+**✅ Single-word queries also work well with 0.5**
+```bash
+# Single words get 0.53-0.57 similarity, works with default 0.5
+python3 scripts/omni_ops.py fetch "pgvector" none 10
+python3 scripts/omni_ops.py fetch "数据库" none 20
+```
 
 ## 🎯 Vector Search vs Keyword Search
 

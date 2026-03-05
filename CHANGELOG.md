@@ -1,5 +1,39 @@
 # Changelog
 
+## [2.0.2] - 2026-03-05
+
+### Changed
+- **Default similarity threshold changed from 0.6 to 0.5**
+- Improved recall: returns more results (average 3-10 vs 1-2)
+- Better support for both phrase queries and single-word queries
+- Updated all documentation to reflect new default
+
+### Rationale
+- Threshold 0.5 provides better balance between precision and recall
+- Works well for diverse query types (phrases and single words)
+- Users can still increase threshold for more precise results
+- More forgiving for exploratory searches
+
+## [2.0.1] - 2026-03-05
+
+### Analysis
+- Completed comprehensive similarity threshold testing
+- Analyzed query patterns: phrase queries vs single-word queries
+- Confirmed 0.6 as optimal default threshold for phrase queries
+- Documented query best practices
+
+### Documentation
+- Added `THRESHOLD_ANALYSIS.md` with detailed test results
+- Updated threshold guidance in README.md and SKILL.md
+- Added query best practices (phrase queries recommended)
+- Clarified that single-word queries need lower threshold (0.5)
+
+### Key Findings
+- Phrase queries (3-5 words): similarity 0.60-0.66 ✅
+- Single-word queries: similarity 0.53-0.57 (need threshold 0.5)
+- **Default changed to 0.5** for better recall (3-10 results vs 1-2)
+- 0.55 returns 3.5 results (exploratory), 0.65 returns 0.2 results (precise)
+
 ## [2.0.0] - 2026-03-03
 
 ### 🎉 Major Update: Vector Semantic Search

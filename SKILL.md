@@ -10,7 +10,7 @@ Omni-Recall is a high-performance memory management skill designed for AI agents
 ## 🚀 Core Capabilities
 
 1. **Vector Semantic Search (`fetch` with `query_text`)**:
-   Intelligent natural language queries using vector similarity. Finds semantically related content even with different wording. Returns results ranked by similarity score (0-1). Default threshold: 0.6 (balanced accuracy and recall).
+   Intelligent natural language queries using vector similarity. Finds semantically related content even with different wording. Returns results ranked by similarity score (0-1). Default threshold: 0.5 (balanced recall and precision).
 
 2. **Neural Synchronization (`sync`)**:
    Encodes current session state, user preferences, and operational steps into 1536-dimensional vectors using OpenAI's `text-embedding-3-small` via APIYI. **Includes automatic duplicate detection** (skips if cosine similarity > 0.9). Supports optional `category` and `importance` fields.
@@ -30,7 +30,7 @@ Omni-Recall is a high-performance memory management skill designed for AI agents
 
 ### Vector Semantic Search (Recommended)
 ```bash
-# Search with natural language (default threshold: 0.6)
+# Search with natural language (default threshold: 0.5)
 python3 scripts/omni_ops.py fetch "如何优化数据库性能" none 10
 
 # Search with custom similarity threshold
@@ -40,10 +40,10 @@ python3 scripts/omni_ops.py fetch "pgvector 索引优化" none 10 none 0.7
 python3 scripts/omni_ops.py fetch "AI Agent 开发" 7 10
 
 # Search instructions with semantic understanding
-python3 scripts/omni_ops.py fetch-instruction "代码风格规范" none 0.6 5
+python3 scripts/omni_ops.py fetch-instruction "代码风格规范" none 0.5 5
 
 # Search profiles
-python3 scripts/omni_ops.py fetch-profile "用户技能背景" none 0.6 5
+python3 scripts/omni_ops.py fetch-profile "用户技能背景" none 0.5 5
 
 # List all records (use 'none' as query)
 python3 scripts/omni_ops.py fetch none 30 10
@@ -52,10 +52,16 @@ python3 scripts/omni_ops.py fetch none 30 10
 ### Similarity Threshold Guide
 | Threshold | Description | Use Case |
 |-----------|-------------|----------|
-| **0.6** | **Balanced (Default)** ⭐ | General search, best for most cases |
-| 0.7-0.8 | High precision | Exact matches, specific queries |
-| 0.5 | Exploratory | Broad search, discover related content |
+| **0.5** | **Balanced (Default)** ⭐ | General search, returns more results |
+| 0.6-0.65 | Higher precision | More specific matches |
+| 0.7-0.8 | High precision | Exact matches, very specific queries |
 | 0.8+ | Very precise | Almost exact matches only |
+
+**Query Best Practices**:
+- ✅ Use phrase queries (3-5 words): "pgvector 索引优化", "数据库性能优化"
+- ✅ Single-word queries work well with default 0.5: "pgvector", "数据库"
+- 📊 Phrase queries typically score 0.60-0.66, single words 0.53-0.57
+- 🎯 Default 0.5 provides good balance, returning 3-10 relevant results
 
 ### Synchronize Session Context
 ```bash
@@ -90,7 +96,7 @@ python3 scripts/omni_ops.py sync-instruction "workflow" "1. Plan -> 2. Implement
 python3 scripts/omni_ops.py sync-nsfw "Sensitive information here" "private-tag" 0.9
 
 # Fetch with semantic search
-python3 scripts/omni_ops.py fetch-nsfw "敏感查询" 30 10 none 0.6
+python3 scripts/omni_ops.py fetch-nsfw "敏感查询" 30 10 none 0.5
 
 # Fetch full context including nsfw records
 python3 scripts/omni_ops.py fetch-full-context 10 none true

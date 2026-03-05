@@ -124,7 +124,7 @@ class OmniRecallManager:
         conn.close()
         return True
 
-    def fetch(self, days=None, limit=None, keywords=None, category=None, query_text=None, similarity_threshold=0.6):
+    def fetch(self, days=None, limit=None, keywords=None, category=None, query_text=None, similarity_threshold=0.5):
         """Retrieves historical context from the neural knowledge base.
         
         Args:
@@ -267,7 +267,7 @@ class OmniRecallManager:
         conn.close()
         return True
 
-    def fetch_instruction(self, category=None, keywords=None, query_text=None, similarity_threshold=0.6, limit=None):
+    def fetch_instruction(self, category=None, keywords=None, query_text=None, similarity_threshold=0.5, limit=None):
         """Retrieves AI instructions, optionally filtered by category and keywords.
         
         Args:
@@ -435,7 +435,7 @@ class OmniRecallManager:
         finally:
             conn.close()
 
-    def fetch_nsfw(self, days=None, limit=None, keywords=None, category=None, query_text=None, similarity_threshold=0.6):
+    def fetch_nsfw(self, days=None, limit=None, keywords=None, category=None, query_text=None, similarity_threshold=0.5):
         """
         Retrieves and decrypts records from the nsfw_memories table.
         
@@ -763,7 +763,7 @@ class OmniRecallManager:
         conn.close()
         return True
 
-    def fetch_profile(self, category=None, keywords=None, query_text=None, similarity_threshold=0.6, limit=None):
+    def fetch_profile(self, category=None, keywords=None, query_text=None, similarity_threshold=0.5, limit=None):
         """Retrieves user profiles, optionally filtered by category and keywords.
         
         Args:
@@ -898,7 +898,7 @@ if __name__ == "__main__":
             days = int(sys.argv[3]) if (len(sys.argv) > 3 and sys.argv[3].lower() != 'none') else None
             limit = int(sys.argv[4]) if (len(sys.argv) > 4 and sys.argv[4].lower() != 'none') else None
             category = sys.argv[5] if (len(sys.argv) > 5 and sys.argv[5].lower() != 'none') else None
-            similarity_threshold = float(sys.argv[6]) if len(sys.argv) > 6 else 0.6
+            similarity_threshold = float(sys.argv[6]) if len(sys.argv) > 6 else 0.5
             
             memories = manager.fetch(
                 query_text=query_text,
@@ -930,7 +930,7 @@ if __name__ == "__main__":
                 sys.exit(1)
             query_text = sys.argv[2] if sys.argv[2].lower() != 'none' else None
             category = sys.argv[3] if (len(sys.argv) > 3 and sys.argv[3].lower() != 'none') else None
-            similarity_threshold = float(sys.argv[4]) if len(sys.argv) > 4 else 0.6
+            similarity_threshold = float(sys.argv[4]) if len(sys.argv) > 4 else 0.5
             limit = int(sys.argv[5]) if len(sys.argv) > 5 else None
             
             profiles = manager.fetch_profile(
@@ -965,7 +965,7 @@ if __name__ == "__main__":
                 sys.exit(1)
             query_text = sys.argv[2] if sys.argv[2].lower() != 'none' else None
             category = sys.argv[3] if (len(sys.argv) > 3 and sys.argv[3].lower() != 'none') else None
-            similarity_threshold = float(sys.argv[4]) if len(sys.argv) > 4 else 0.6
+            similarity_threshold = float(sys.argv[4]) if len(sys.argv) > 4 else 0.5
             limit = int(sys.argv[5]) if len(sys.argv) > 5 else None
             
             instructions = manager.fetch_instruction(
@@ -1014,7 +1014,7 @@ if __name__ == "__main__":
             days = int(sys.argv[3]) if (len(sys.argv) > 3 and sys.argv[3].lower() != 'none') else None
             limit = int(sys.argv[4]) if (len(sys.argv) > 4 and sys.argv[4].lower() != 'none') else None
             category = sys.argv[5] if (len(sys.argv) > 5 and sys.argv[5].lower() != 'none') else None
-            similarity_threshold = float(sys.argv[6]) if len(sys.argv) > 6 else 0.6
+            similarity_threshold = float(sys.argv[6]) if len(sys.argv) > 6 else 0.5
             
             results = manager.fetch_nsfw(
                 query_text=query_text,
