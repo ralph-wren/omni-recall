@@ -124,46 +124,100 @@ class OmniRecallManager:
         conn.close()
         return True
 
-    def fetch(self, days=None, limit=None, keywords=None, category=None):
-        """Retrieves historical context from the neural knowledge base."""
+    def fetch(self, days=None, limit=None, keywords=None, category=None, query_text=None, similarity_threshold=0.6):
+        """Retrieves historical context from the neural knowledge base.
+        
+        Args:
+            days: Filter by days back from now
+            limit: Maximum number of results
+            keywords: Keyword string or list for text matching (legacy support)
+            category: Filter by category
+            query_text: Text for semantic vector search (recommended)
+            similarity_threshold: Minimum similarity score for vector search (0-1)
+        """
         if not self.supabase_password:
             raise ValueError("Environment variable 'SUPABASE_PASSWORD' is required for database retrieval.")
             
         conn = psycopg2.connect(password=self.supabase_password, **self.db_config)
         cur = conn.cursor()
         
-        query = "SELECT content, created_at, source, metadata, category, importance FROM memories"
-        conditions = []
-        params = []
-        
-        if days:
-            conditions.append("created_at >= %s")
-            params.append(datetime.now() - timedelta(days=days))
+        # Use vector similarity search if query_text is provided
+        if query_text:
+            print(f"Encoding query into vector space...")
+            query_embedding = self._get_embedding(query_text)
             
-        if category:
-            conditions.append("category = %s")
-            params.append(category)
+            # Build query with vector similarity
+            query = """
+                SELECT content, created_at, source, metadata, category, importance,
+                       1 - (embedding <=> %s::vector) as similarity
+                FROM memories
+            """
+            conditions = []
+            params = [query_embedding]
             
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
+            if days:
+                conditions.append("created_at >= %s")
+                params.append(datetime.now() - timedelta(days=days))
+                
+            if category:
+                conditions.append("category = %s")
+                params.append(category)
             
-        query += " ORDER BY created_at DESC"
-        
-        if limit:
-            query += " LIMIT %s"
-            params.append(limit)
+            # Add similarity threshold condition
+            conditions.append("(1 - (embedding <=> %s::vector)) >= %s")
+            params.extend([query_embedding, similarity_threshold])
             
-        cur.execute(query, params)
-        memories = cur.fetchall()
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+            
+            # Order by similarity (best matches first)
+            query += " ORDER BY embedding <=> %s::vector"
+            params.append(query_embedding)
+            
+            if limit:
+                query += " LIMIT %s"
+                params.append(limit)
+            
+            cur.execute(query, params)
+            results = cur.fetchall()
+            
+            # Results already include similarity scores
+            memories = results
+            
+        else:
+            # Traditional keyword-based search (legacy mode)
+            query = "SELECT content, created_at, source, metadata, category, importance FROM memories"
+            conditions = []
+            params = []
+            
+            if days:
+                conditions.append("created_at >= %s")
+                params.append(datetime.now() - timedelta(days=days))
+                
+            if category:
+                conditions.append("category = %s")
+                params.append(category)
+                
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+                
+            query += " ORDER BY created_at DESC"
+            
+            if limit:
+                query += " LIMIT %s"
+                params.append(limit)
+                
+            cur.execute(query, params)
+            memories = cur.fetchall()
+            
+            # Keyword filtering (post-fetch for simplicity)
+            if keywords:
+                if isinstance(keywords, str): keywords = [keywords]
+                memories = [m for m in memories if all(kw.lower() in m[0].lower() for kw in keywords)]
         
         cur.close()
         conn.close()
         
-        # Keyword filtering (post-fetch for simplicity)
-        if keywords:
-            if isinstance(keywords, str): keywords = [keywords]
-            memories = [m for m in memories if all(kw.lower() in m[0].lower() for kw in keywords)]
-            
         return memories
 
     def sync_instruction(self, category, content, threshold=0.9):
@@ -213,32 +267,80 @@ class OmniRecallManager:
         conn.close()
         return True
 
-    def fetch_instruction(self, category=None, keywords=None):
-        """Retrieves AI instructions, optionally filtered by category and keywords."""
+    def fetch_instruction(self, category=None, keywords=None, query_text=None, similarity_threshold=0.6, limit=None):
+        """Retrieves AI instructions, optionally filtered by category and keywords.
+        
+        Args:
+            category: Filter by instruction category
+            keywords: Keyword string or list for text matching (legacy support)
+            query_text: Text for semantic vector search (recommended)
+            similarity_threshold: Minimum similarity score for vector search (0-1)
+            limit: Maximum number of results
+        """
         if not self.supabase_password:
             raise ValueError("Environment variable 'SUPABASE_PASSWORD' is required for context retrieval.")
             
         conn = psycopg2.connect(password=self.supabase_password, **self.db_config)
         cur = conn.cursor()
         
-        query = "SELECT category, content, metadata FROM instructions WHERE 1=1"
-        params = []
-
-        if category:
-            query += " AND category = %s"
-            params.append(category)
-
-        if keywords:
-            if isinstance(keywords, str):
-                keywords = [keywords]
-            for kw in keywords:
-                query += " AND content ILIKE %s"
-                params.append(f"%{kw}%")
+        # Use vector similarity search if query_text is provided
+        if query_text:
+            print(f"Encoding instruction query into vector space...")
+            query_embedding = self._get_embedding(query_text)
             
-        query += " ORDER BY category ASC, created_at DESC"
+            query = """
+                SELECT category, content, metadata,
+                       1 - (embedding <=> %s::vector) as similarity
+                FROM instructions
+            """
+            params = [query_embedding]
+            conditions = []
             
-        cur.execute(query, tuple(params))
-        rows = cur.fetchall()
+            if category:
+                conditions.append("category = %s")
+                params.append(category)
+            
+            # Add similarity threshold condition
+            conditions.append("(1 - (embedding <=> %s::vector)) >= %s")
+            params.extend([query_embedding, similarity_threshold])
+            
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+            
+            query += " ORDER BY embedding <=> %s::vector"
+            params.append(query_embedding)
+            
+            if limit:
+                query += " LIMIT %s"
+                params.append(limit)
+            
+            cur.execute(query, tuple(params))
+            rows = cur.fetchall()
+            
+        else:
+            # Traditional keyword-based search (legacy mode)
+            query = "SELECT category, content, metadata FROM instructions WHERE 1=1"
+            params = []
+
+            if category:
+                query += " AND category = %s"
+                params.append(category)
+
+            if keywords:
+                if isinstance(keywords, str):
+                    keywords = [keywords]
+                for kw in keywords:
+                    query += " AND content ILIKE %s"
+                    params.append(f"%{kw}%")
+                
+            query += " ORDER BY category ASC, created_at DESC"
+            
+            if limit:
+                query += " LIMIT %s"
+                params.append(limit)
+                
+            cur.execute(query, tuple(params))
+            rows = cur.fetchall()
         
         cur.close()
         conn.close()
@@ -333,9 +435,17 @@ class OmniRecallManager:
         finally:
             conn.close()
 
-    def fetch_nsfw(self, days=None, limit=None, keywords=None, category=None):
+    def fetch_nsfw(self, days=None, limit=None, keywords=None, category=None, query_text=None, similarity_threshold=0.6):
         """
         Retrieves and decrypts records from the nsfw_memories table.
+        
+        Args:
+            days: Filter by days back from now
+            limit: Maximum number of results
+            keywords: Keyword string or list for text matching (legacy support)
+            category: Filter by category
+            query_text: Text for semantic vector search (recommended)
+            similarity_threshold: Minimum similarity score for vector search (0-1)
         """
         if not self.supabase_password:
             raise ValueError("Environment variable 'SUPABASE_PASSWORD' is required for nsfw retrieval.")
@@ -343,39 +453,92 @@ class OmniRecallManager:
         conn = psycopg2.connect(password=self.supabase_password, **self.db_config)
         try:
             with conn.cursor() as cur:
-                query = "SELECT content, created_at, source, category, importance FROM nsfw_memories"
-                params = []
-                conditions = []
-                
-                if days:
-                    conditions.append(f"created_at > NOW() - INTERVAL '{days} days'")
-                
-                if category:
-                    conditions.append("category = %s")
-                    params.append(category)
-                
-                if conditions:
-                    query += " WHERE " + " AND ".join(conditions)
+                # Use vector similarity search if query_text is provided
+                if query_text:
+                    print(f"Encoding nsfw query into vector space...")
+                    query_embedding = self._get_embedding(query_text)
                     
-                query += " ORDER BY created_at DESC"
-                if limit:
-                    query += " LIMIT %s"
-                    params.append(limit)
-                
-                cur.execute(query, params)
-                rows = cur.fetchall()
+                    query = """
+                        SELECT content, created_at, source, category, importance,
+                               1 - (embedding <=> %s::vector) as similarity
+                        FROM nsfw_memories
+                    """
+                    params = [query_embedding]
+                    conditions = []
+                    
+                    if days:
+                        conditions.append(f"created_at > NOW() - INTERVAL '{days} days'")
+                    
+                    if category:
+                        conditions.append("category = %s")
+                        params.append(category)
+                    
+                    # Add similarity threshold condition
+                    conditions.append("(1 - (embedding <=> %s::vector)) >= %s")
+                    params.extend([query_embedding, similarity_threshold])
+                    
+                    if conditions:
+                        query += " WHERE " + " AND ".join(conditions)
+                    
+                    query += " ORDER BY embedding <=> %s::vector"
+                    params.append(query_embedding)
+                    
+                    if limit:
+                        query += " LIMIT %s"
+                        params.append(limit)
+                    
+                    cur.execute(query, params)
+                    rows = cur.fetchall()
+                    
+                else:
+                    # Traditional keyword-based search (legacy mode)
+                    query = "SELECT content, created_at, source, category, importance FROM nsfw_memories"
+                    params = []
+                    conditions = []
+                    
+                    if days:
+                        conditions.append(f"created_at > NOW() - INTERVAL '{days} days'")
+                    
+                    if category:
+                        conditions.append("category = %s")
+                        params.append(category)
+                    
+                    if conditions:
+                        query += " WHERE " + " AND ".join(conditions)
+                        
+                    query += " ORDER BY created_at DESC"
+                    if limit:
+                        query += " LIMIT %s"
+                        params.append(limit)
+                    
+                    cur.execute(query, params)
+                    rows = cur.fetchall()
                 
             results = []
-            for enc_content, created_at, source, cat, imp in rows:
+            for row in rows:
+                enc_content = row[0]
+                created_at = row[1]
+                source = row[2]
+                cat = row[3]
+                imp = row[4]
+                similarity = row[5] if query_text and len(row) > 5 else None
+                
                 try:
                     decrypted = self.decrypt(enc_content)
-                    if keywords:
+                    if keywords and not query_text:  # Only apply keyword filter in legacy mode
                         if isinstance(keywords, str): keywords = [keywords]
                         if not all(kw.lower() in decrypted.lower() for kw in keywords):
                             continue
-                    results.append((decrypted, created_at, source, cat, imp))
+                    
+                    if similarity is not None:
+                        results.append((decrypted, created_at, source, cat, imp, similarity))
+                    else:
+                        results.append((decrypted, created_at, source, cat, imp))
                 except Exception as e:
-                    results.append((f"[DECRYPTION_ERROR: {str(e)}]", created_at, source, cat, imp))
+                    if similarity is not None:
+                        results.append((f"[DECRYPTION_ERROR: {str(e)}]", created_at, source, cat, imp, similarity))
+                    else:
+                        results.append((f"[DECRYPTION_ERROR: {str(e)}]", created_at, source, cat, imp))
             return results
         finally:
             conn.close()
@@ -600,32 +763,80 @@ class OmniRecallManager:
         conn.close()
         return True
 
-    def fetch_profile(self, category=None, keywords=None):
-        """Retrieves user profiles, optionally filtered by category and keywords."""
+    def fetch_profile(self, category=None, keywords=None, query_text=None, similarity_threshold=0.6, limit=None):
+        """Retrieves user profiles, optionally filtered by category and keywords.
+        
+        Args:
+            category: Filter by profile category
+            keywords: Keyword string or list for text matching (legacy support)
+            query_text: Text for semantic vector search (recommended)
+            similarity_threshold: Minimum similarity score for vector search (0-1)
+            limit: Maximum number of results
+        """
         if not self.supabase_password:
             raise ValueError("Environment variable 'SUPABASE_PASSWORD' is required for context retrieval.")
             
         conn = psycopg2.connect(password=self.supabase_password, **self.db_config)
         cur = conn.cursor()
         
-        query = "SELECT category, content, metadata FROM profiles WHERE 1=1"
-        params = []
-
-        if category:
-            query += " AND category = %s"
-            params.append(category)
-
-        if keywords:
-            if isinstance(keywords, str):
-                keywords = [keywords]
-            for kw in keywords:
-                query += " AND content ILIKE %s"
-                params.append(f"%{kw}%")
+        # Use vector similarity search if query_text is provided
+        if query_text:
+            print(f"Encoding profile query into vector space...")
+            query_embedding = self._get_embedding(query_text)
             
-        query += " ORDER BY category ASC, created_at DESC"
+            query = """
+                SELECT category, content, metadata,
+                       1 - (embedding <=> %s::vector) as similarity
+                FROM profiles
+            """
+            params = [query_embedding]
+            conditions = []
             
-        cur.execute(query, tuple(params))
-        rows = cur.fetchall()
+            if category:
+                conditions.append("category = %s")
+                params.append(category)
+            
+            # Add similarity threshold condition
+            conditions.append("(1 - (embedding <=> %s::vector)) >= %s")
+            params.extend([query_embedding, similarity_threshold])
+            
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+            
+            query += " ORDER BY embedding <=> %s::vector"
+            params.append(query_embedding)
+            
+            if limit:
+                query += " LIMIT %s"
+                params.append(limit)
+            
+            cur.execute(query, tuple(params))
+            rows = cur.fetchall()
+            
+        else:
+            # Traditional keyword-based search (legacy mode)
+            query = "SELECT category, content, metadata FROM profiles WHERE 1=1"
+            params = []
+
+            if category:
+                query += " AND category = %s"
+                params.append(category)
+
+            if keywords:
+                if isinstance(keywords, str):
+                    keywords = [keywords]
+                for kw in keywords:
+                    query += " AND content ILIKE %s"
+                    params.append(f"%{kw}%")
+                
+            query += " ORDER BY category ASC, created_at DESC"
+            
+            if limit:
+                query += " LIMIT %s"
+                params.append(limit)
+                
+            cur.execute(query, tuple(params))
+            rows = cur.fetchall()
         
         cur.close()
         conn.close()
@@ -637,15 +848,18 @@ if __name__ == "__main__":
         print("Omni-Recall Engine CLI (Default Language: zh-CN)")
         print("Usage:")
         print("  python3 omni_ops.py sync 'content' [source] [threshold] [category] [importance]")
-        print("  python3 omni_ops.py fetch [days] [limit] [category] [keyword1] [keyword2] ...")
+        print("  python3 omni_ops.py fetch '<query_text>' [days] [limit] [category] [similarity_threshold]")
         print("  python3 omni_ops.py sync-profile <category> <content> [threshold]")
-        print("  python3 omni_ops.py fetch-profile [category] [keyword1] [keyword2] ...")
+        print("  python3 omni_ops.py fetch-profile '<query_text>' [category] [similarity_threshold] [limit]")
         print("  python3 omni_ops.py sync-instruction <category> <content> [threshold]")
-        print("  python3 omni_ops.py fetch-instruction [category] [keyword1] [keyword2] ...")
+        print("  python3 omni_ops.py fetch-instruction '<query_text>' [category] [similarity_threshold] [limit]")
         print("  python3 omni_ops.py sync-vault <key> <value>")
         print("  python3 omni_ops.py fetch-vault [key]")
+        print("  python3 omni_ops.py fetch-nsfw '<query_text>' [days] [limit] [category] [similarity_threshold]")
         print("  python3 omni_ops.py fetch-full-context [days] [limit]")
         print("  python3 omni_ops.py batch-sync-doc <file_path> [source_tag] [threshold] [category] [importance]")
+        print("\nNote: All fetch commands now use vector semantic search by default.")
+        print("      Use query_text='none' to list all records without filtering.")
         sys.exit(1)
 
     action = sys.argv[1]
@@ -677,37 +891,113 @@ if __name__ == "__main__":
             if manager.sync_profile(category, content, threshold):
                 print(f"SUCCESS: Profile '{category}' synchronized.")
         elif action == "fetch":
-            days = int(sys.argv[2]) if (len(sys.argv) > 2 and sys.argv[2].lower() != 'none') else None
-            limit = int(sys.argv[3]) if (len(sys.argv) > 3 and sys.argv[3].lower() != 'none') else None
-            category = sys.argv[4] if (len(sys.argv) > 4 and sys.argv[4].lower() != 'none') else None
-            keywords = sys.argv[5:] if len(sys.argv) > 5 else None
-            memories = manager.fetch(days, limit, keywords, category)
-            print(json.dumps([{"content": m[0], "time": str(m[1]), "source": m[2], "metadata": m[3], "category": m[4], "importance": m[5]} for m in memories], ensure_ascii=False))
+            if len(sys.argv) < 3:
+                print("Usage: python3 omni_ops.py fetch '<query_text>' [days] [limit] [category] [similarity_threshold]")
+                sys.exit(1)
+            query_text = sys.argv[2] if sys.argv[2].lower() != 'none' else None
+            days = int(sys.argv[3]) if (len(sys.argv) > 3 and sys.argv[3].lower() != 'none') else None
+            limit = int(sys.argv[4]) if (len(sys.argv) > 4 and sys.argv[4].lower() != 'none') else None
+            category = sys.argv[5] if (len(sys.argv) > 5 and sys.argv[5].lower() != 'none') else None
+            similarity_threshold = float(sys.argv[6]) if len(sys.argv) > 6 else 0.6
+            
+            memories = manager.fetch(
+                query_text=query_text,
+                days=days,
+                limit=limit,
+                category=category,
+                similarity_threshold=similarity_threshold
+            )
+            
+            # Format output with similarity scores if available
+            result = []
+            for m in memories:
+                item = {
+                    "content": m[0],
+                    "time": str(m[1]),
+                    "source": m[2],
+                    "metadata": m[3],
+                    "category": m[4],
+                    "importance": m[5]
+                }
+                if len(m) > 6:  # Has similarity score
+                    item["similarity"] = m[6]
+                result.append(item)
+            print(json.dumps(result, ensure_ascii=False))
+            
         elif action == "fetch-profile":
-            category = sys.argv[2] if (len(sys.argv) > 2 and sys.argv[2].lower() != 'none') else None
-            keywords = sys.argv[3:] if len(sys.argv) > 3 else None
-            profiles = manager.fetch_profile(category, keywords)
-            print(json.dumps([{"category": p[0], "content": p[1], "metadata": p[2]} for p in profiles], ensure_ascii=False))
+            if len(sys.argv) < 3:
+                print("Usage: python3 omni_ops.py fetch-profile '<query_text>' [category] [similarity_threshold] [limit]")
+                sys.exit(1)
+            query_text = sys.argv[2] if sys.argv[2].lower() != 'none' else None
+            category = sys.argv[3] if (len(sys.argv) > 3 and sys.argv[3].lower() != 'none') else None
+            similarity_threshold = float(sys.argv[4]) if len(sys.argv) > 4 else 0.6
+            limit = int(sys.argv[5]) if len(sys.argv) > 5 else None
+            
+            profiles = manager.fetch_profile(
+                query_text=query_text,
+                category=category,
+                similarity_threshold=similarity_threshold,
+                limit=limit
+            )
+            
+            result = []
+            for p in profiles:
+                item = {
+                    "category": p[0],
+                    "content": p[1],
+                    "metadata": p[2]
+                }
+                if len(p) > 3:  # Has similarity score
+                    item["similarity"] = p[3]
+                result.append(item)
+            print(json.dumps(result, ensure_ascii=False))
+            
         elif action == "sync-instruction" and len(sys.argv) > 3:
             category = sys.argv[2]
             content = sys.argv[3]
             threshold = float(sys.argv[4]) if len(sys.argv) > 4 else 0.9
             if manager.sync_instruction(category, content, threshold):
                 print(f"SUCCESS: Instruction '{category}' synchronized.")
+                
         elif action == "fetch-instruction":
-            category = sys.argv[2] if (len(sys.argv) > 2 and sys.argv[2].lower() != 'none') else None
-            keywords = sys.argv[3:] if len(sys.argv) > 3 else None
-            instructions = manager.fetch_instruction(category, keywords)
-            print(json.dumps([{"category": i[0], "content": i[1], "metadata": i[2]} for i in instructions], ensure_ascii=False))
+            if len(sys.argv) < 3:
+                print("Usage: python3 omni_ops.py fetch-instruction '<query_text>' [category] [similarity_threshold] [limit]")
+                sys.exit(1)
+            query_text = sys.argv[2] if sys.argv[2].lower() != 'none' else None
+            category = sys.argv[3] if (len(sys.argv) > 3 and sys.argv[3].lower() != 'none') else None
+            similarity_threshold = float(sys.argv[4]) if len(sys.argv) > 4 else 0.6
+            limit = int(sys.argv[5]) if len(sys.argv) > 5 else None
+            
+            instructions = manager.fetch_instruction(
+                query_text=query_text,
+                category=category,
+                similarity_threshold=similarity_threshold,
+                limit=limit
+            )
+            
+            result = []
+            for i in instructions:
+                item = {
+                    "category": i[0],
+                    "content": i[1],
+                    "metadata": i[2]
+                }
+                if len(i) > 3:  # Has similarity score
+                    item["similarity"] = i[3]
+                result.append(item)
+            print(json.dumps(result, ensure_ascii=False))
+            
         elif action == "sync-vault" and len(sys.argv) > 3:
             key = sys.argv[2]
             value = sys.argv[3]
             manager.sync_vault(key, value)
+            
         elif action == "fetch-vault":
             key = sys.argv[2] if len(sys.argv) > 2 else None
             results = manager.fetch_vault(key)
             for k, v in results:
                 print(f"[{k}]: {v}")
+                
         elif action == "sync-nsfw" and len(sys.argv) > 2:
             content = sys.argv[2]
             source = sys.argv[3] if len(sys.argv) > 3 else "omni-recall-nsfw"
@@ -715,14 +1005,29 @@ if __name__ == "__main__":
             category = sys.argv[5] if len(sys.argv) > 5 else "general"
             importance = float(sys.argv[6]) if len(sys.argv) > 6 else 0.5
             manager.sync_nsfw(content, source, threshold, category, importance)
+            
         elif action == "fetch-nsfw":
-            days = int(sys.argv[2]) if (len(sys.argv) > 2 and sys.argv[2].lower() != 'none') else None
-            limit = int(sys.argv[3]) if (len(sys.argv) > 3 and sys.argv[3].lower() != 'none') else None
-            category = sys.argv[4] if (len(sys.argv) > 4 and sys.argv[4].lower() != 'none') else None
-            keywords = sys.argv[5:] if len(sys.argv) > 5 else None
-            results = manager.fetch_nsfw(days, limit, keywords, category)
+            if len(sys.argv) < 3:
+                print("Usage: python3 omni_ops.py fetch-nsfw '<query_text>' [days] [limit] [category] [similarity_threshold]")
+                sys.exit(1)
+            query_text = sys.argv[2] if sys.argv[2].lower() != 'none' else None
+            days = int(sys.argv[3]) if (len(sys.argv) > 3 and sys.argv[3].lower() != 'none') else None
+            limit = int(sys.argv[4]) if (len(sys.argv) > 4 and sys.argv[4].lower() != 'none') else None
+            category = sys.argv[5] if (len(sys.argv) > 5 and sys.argv[5].lower() != 'none') else None
+            similarity_threshold = float(sys.argv[6]) if len(sys.argv) > 6 else 0.6
+            
+            results = manager.fetch_nsfw(
+                query_text=query_text,
+                days=days,
+                limit=limit,
+                category=category,
+                similarity_threshold=similarity_threshold
+            )
+            
             for r in results:
-                print(f"[{r[1]}] ({r[2]}) [{r[3]}] ({r[4]}) {r[0]}")
+                similarity_str = f" [similarity: {r[5]:.3f}]" if len(r) > 5 else ""
+                print(f"[{r[1]}] ({r[2]}) [{r[3]}] ({r[4]}){similarity_str} {r[0]}")
+                
         elif action == "fetch-full-context":
             days = int(sys.argv[2]) if (len(sys.argv) > 2 and sys.argv[2].lower() != 'none') else None
             limit = int(sys.argv[3]) if (len(sys.argv) > 3 and sys.argv[3].lower() != 'none') else None
