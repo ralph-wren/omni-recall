@@ -43,28 +43,28 @@ Omni-Recall operates on a **Tri-Matrix Architecture**:
 ### 1. Full Context Realignment (Recommended)
 ```bash
 # Retrieve ALL Profiles + ALL Instructions + Memories from last 7 days
-python3 scripts/omni_ops.py fetch-full-context 7
+python scripts/omni_ops.py fetch-full-context 7
 ```
 
 ### 2. Vector Semantic Search (Command Line)
 ```bash
 # Search memories with natural language query (default threshold: 0.5)
-python3 scripts/omni_ops.py fetch "如何优化数据库性能" none 10
+python scripts/omni_ops.py fetch "如何优化数据库性能" none 10
 # Parameters: <query_text> [days] [limit] [category] [similarity_threshold]
 
 # Search with custom similarity threshold
-python3 scripts/omni_ops.py fetch "pgvector 索引优化" none 10 none 0.7
+python scripts/omni_ops.py fetch "pgvector 索引优化" none 10 none 0.7
 
 # Search instructions
-python3 scripts/omni_ops.py fetch-instruction "代码风格规范" none 0.5 5
+python scripts/omni_ops.py fetch-instruction "代码风格规范" none 0.5 5
 # Parameters: <query_text> [category] [similarity_threshold] [limit]
 
 # Search profiles
-python3 scripts/omni_ops.py fetch-profile "用户技能背景" none 0.5 5
+python scripts/omni_ops.py fetch-profile "用户技能背景" none 0.5 5
 # Parameters: <query_text> [category] [similarity_threshold] [limit]
 
 # List all records without filtering (use 'none' as query)
-python3 scripts/omni_ops.py fetch none 30 10
+python scripts/omni_ops.py fetch none 30 10
 ```
 
 ### 3. Semantic Vector Search (Python API)
@@ -95,22 +95,22 @@ instructions = manager.fetch_instruction(
 ### 4. Manual Synchronization
 ```bash
 # Sync session state
-python3 scripts/omni_ops.py sync "Detailed summary" "session_tag"
+python scripts/omni_ops.py sync "Detailed summary" "session_tag"
 
 # Sync user profile (Role/Preference)
-python3 scripts/omni_ops.py sync-profile "persona" "Senior AI Engineer"
+python scripts/omni_ops.py sync-profile "persona" "Senior AI Engineer"
 
 # Sync AI instructions (Tone/Rules)
-python3 scripts/omni_ops.py sync-instruction "tone" "Professional and gentle"
+python scripts/omni_ops.py sync-instruction "tone" "Professional and gentle"
 ```
 
 ### 5. Batch Sync (Files & URLs)
 ```bash
 # Automatically split markdown by H1-H5 headers
-python3 scripts/omni_ops.py batch-sync-doc "docs/spark_optimization.md"
+python scripts/omni_ops.py batch-sync-doc "docs/spark_optimization.md"
 
 # Sync web pages directly via URL
-python3 scripts/omni_ops.py batch-sync-doc "https://clickhouse.com/docs/en/optimize"
+python scripts/omni_ops.py batch-sync-doc "https://clickhouse.com/docs/en/optimize"
 ```
 
 ## 🔍 Similarity Threshold Guide
@@ -129,15 +129,15 @@ python3 scripts/omni_ops.py batch-sync-doc "https://clickhouse.com/docs/en/optim
 **✅ Recommended: Use phrase queries (3-5 words)**
 ```bash
 # Good - specific phrases get 0.60-0.66 similarity
-python3 scripts/omni_ops.py fetch "pgvector 索引优化" none 10
-python3 scripts/omni_ops.py fetch "如何优化数据库性能" none 10
+python scripts/omni_ops.py fetch "pgvector 索引优化" none 10
+python scripts/omni_ops.py fetch "如何优化数据库性能" none 10
 ```
 
 **✅ Single-word queries also work well with 0.5**
 ```bash
 # Single words get 0.53-0.57 similarity, works with default 0.5
-python3 scripts/omni_ops.py fetch "pgvector" none 10
-python3 scripts/omni_ops.py fetch "数据库" none 20
+python scripts/omni_ops.py fetch "pgvector" none 10
+python scripts/omni_ops.py fetch "数据库" none 20
 ```
 
 ## 🎯 Vector Search vs Keyword Search
@@ -175,16 +175,16 @@ Finds: "PostgreSQL 性能优化" ✅
 
 ```bash
 # Find content about database optimization
-python3 scripts/omni_ops.py fetch "数据库优化" none 10
+python scripts/omni_ops.py fetch "数据库优化" none 10
 
 # Search last 7 days for AI-related content
-python3 scripts/omni_ops.py fetch "AI Agent 开发" 7 10
+python scripts/omni_ops.py fetch "AI Agent 开发" 7 10
 
 # Precise search with higher threshold
-python3 scripts/omni_ops.py fetch "pgvector HNSW" none 5 none 0.75
+python scripts/omni_ops.py fetch "pgvector HNSW" none 5 none 0.75
 
 # Exploratory search with lower threshold
-python3 scripts/omni_ops.py fetch "机器学习" none 20 none 0.5
+python scripts/omni_ops.py fetch "机器学习" none 20 none 0.5
 ```
 
 ## 🤝 Contributing

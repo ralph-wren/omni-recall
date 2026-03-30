@@ -31,22 +31,22 @@ Omni-Recall is a high-performance memory management skill designed for AI agents
 ### Vector Semantic Search (Recommended)
 ```bash
 # Search with natural language (default threshold: 0.5)
-python3 scripts/omni_ops.py fetch "如何优化数据库性能" none 10
+python scripts/omni_ops.py fetch "如何优化数据库性能" none 10
 
 # Search with custom similarity threshold
-python3 scripts/omni_ops.py fetch "pgvector 索引优化" none 10 none 0.7
+python scripts/omni_ops.py fetch "pgvector 索引优化" none 10 none 0.7
 
 # Search last 7 days for AI-related content
-python3 scripts/omni_ops.py fetch "AI Agent 开发" 7 10
+python scripts/omni_ops.py fetch "AI Agent 开发" 7 10
 
 # Search instructions with semantic understanding
-python3 scripts/omni_ops.py fetch-instruction "代码风格规范" none 0.5 5
+python scripts/omni_ops.py fetch-instruction "代码风格规范" none 0.5 5
 
 # Search profiles
-python3 scripts/omni_ops.py fetch-profile "用户技能背景" none 0.5 5
+python scripts/omni_ops.py fetch-profile "用户技能背景" none 0.5 5
 
 # List all records (use 'none' as query)
-python3 scripts/omni_ops.py fetch none 30 10
+python scripts/omni_ops.py fetch none 30 10
 ```
 
 ### Similarity Threshold Guide
@@ -66,65 +66,65 @@ python3 scripts/omni_ops.py fetch none 30 10
 ### Synchronize Session Context
 ```bash
 # Basic sync
-python3 scripts/omni_ops.py sync "User is interested in Python optimization." "session-tag" 0.9
+python scripts/omni_ops.py sync "User is interested in Python optimization." "session-tag" 0.9
 
 # Sync with category and importance
-python3 scripts/omni_ops.py sync "New tech stack insight" "research" 0.9 "technical" 0.8
+python scripts/omni_ops.py sync "New tech stack insight" "research" 0.9 "technical" 0.8
 ```
 
 ### Synchronize User Profile
 ```bash
 # Set a persona
-python3 scripts/omni_ops.py sync-profile "persona" "Experienced Senior Backend Engineer, favors Go and Python."
+python scripts/omni_ops.py sync-profile "persona" "Experienced Senior Backend Engineer, favors Go and Python."
 
 # Set a preference
-python3 scripts/omni_ops.py sync-profile "preference" "Prefers concise code without excessive comments."
+python scripts/omni_ops.py sync-profile "preference" "Prefers concise code without excessive comments."
 ```
 
 ### Synchronize AI Instructions
 ```bash
 # Set tone
-python3 scripts/omni_ops.py sync-instruction "tone" "Professional yet friendly, use 'Partner' as my nickname."
+python scripts/omni_ops.py sync-instruction "tone" "Professional yet friendly, use 'Partner' as my nickname."
 
 # Set workflow steps
-python3 scripts/omni_ops.py sync-instruction "workflow" "1. Plan -> 2. Implementation -> 3. Verification -> 4. Summary."
+python scripts/omni_ops.py sync-instruction "workflow" "1. Plan -> 2. Implementation -> 3. Verification -> 4. Summary."
 ```
 
 ### Encrypted Nsfw Memory (Sensitive Context)
 ```bash
 # Sync sensitive content (Encrypted at rest + Vector embedding)
-python3 scripts/omni_ops.py sync-nsfw "Sensitive information here" "private-tag" 0.9
+python scripts/omni_ops.py sync-nsfw "Sensitive information here" "private-tag" 0.9
 
 # Fetch with semantic search
-python3 scripts/omni_ops.py fetch-nsfw "敏感查询" 30 10 none 0.5
+python scripts/omni_ops.py fetch-nsfw "敏感查询" 30 10 none 0.5
 
 # Fetch full context including nsfw records
-python3 scripts/omni_ops.py fetch-full-context 10 none true
+python scripts/omni_ops.py fetch-full-context 10 none true
 ```
 
 ### Encrypted Vault (Key-Value Storage)
 ```bash
 # Store an encrypted value
-python3 scripts/omni_ops.py sync-vault "ZHIHU_COOKIE" "your_long_cookie_string"
+python scripts/omni_ops.py sync-vault "ZHIHU_COOKIE" "your_long_cookie_string"
 
 # Fetch and decrypt a value
-python3 scripts/omni_ops.py fetch-vault "ZHIHU_COOKIE"
+python scripts/omni_ops.py fetch-vault "ZHIHU_COOKIE"
 ```
 
 ### Batch Synchronize Document/URL
 ```bash
 # Sync a markdown file (H1-H5 Splitting)
-python3 scripts/omni_ops.py batch-sync-doc "/path/to/doc.md" "tag" 0.9
+python scripts/omni_ops.py batch-sync-doc "/path/to/doc.md" "tag" 0.9
 
 # Sync a web page via URL
-python3 scripts/omni_ops.py batch-sync-doc "https://example.com/article" "web-source" 0.9
+python scripts/omni_ops.py batch-sync-doc "https://example.com/article" "web-source" 0.9
 ```
 
 ### Fetch Full Context (Recommended for First Recall)
 **Priority Order**: 1. `instructions` (Persona/Rules) > 2. `profiles` (User Info/Preferences) > 3. `memories` (Session History).
 ```bash
 # Get ALL instructions + ALL profiles + memories from last 10 days
-python3 scripts/omni_ops.py fetch-full-context 10
+python scripts/omni_ops.py fetch-full-context 10
 ```
 
 ---

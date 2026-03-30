@@ -53,12 +53,12 @@
 
 **Before (v1.x):**
 ```bash
-python3 scripts/omni_ops.py fetch 30 10 none keyword1 keyword2
+python scripts/omni_ops.py fetch 30 10 none keyword1 keyword2
 ```
 
 **After (v2.0):**
 ```bash
-python3 scripts/omni_ops.py fetch "natural language query" 30 10 none 0.6
+python scripts/omni_ops.py fetch "natural language query" 30 10 none 0.6
 ```
 
 #### New Features
@@ -112,10 +112,10 @@ results = manager.fetch(query_text="optimization", days=30, similarity_threshold
 **Command Line:**
 ```bash
 # Old (deprecated)
-python3 scripts/omni_ops.py fetch 30 10 none optimization
+python scripts/omni_ops.py fetch 30 10 none optimization
 
 # New
-python3 scripts/omni_ops.py fetch "optimization" 30 10 none 0.6
+python scripts/omni_ops.py fetch "optimization" 30 10 none 0.6
 ```
 
 ---
