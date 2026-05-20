@@ -13,10 +13,11 @@ import sys
 class OmniRecallManager:
     """
     Omni-Recall: Neural Knowledge & Long-Term Context Engine
-    Manages long-term agent memory using Supabase (pgvector) and APIYI (Embeddings).
+    Manages long-term agent memory using Supabase (pgvector) and LLMHub (Embeddings).
     """
     def __init__(self):
-        self.apiyi_token = os.environ.get('APIYI_TOKEN')
+        self.llmhub_token = os.environ.get('LLMHUB_TOKEN')
+        self.embedding_model = os.environ.get('LLMHUB_EMBEDDING_MODEL', 'text-embedding-3-small')
         self.supabase_password = os.environ.get('SUPABASE_PASSWORD')
         self.salt = os.environ.get('SUPABASE_SALT')
         self._cipher = None
@@ -65,16 +66,16 @@ class OmniRecallManager:
             return token
 
     def _get_embedding(self, text):
-        if not self.apiyi_token:
-            raise ValueError("Environment variable 'APIYI_TOKEN' is required for neural encoding.")
+        if not self.llmhub_token:
+            raise ValueError("Environment variable 'LLMHUB_TOKEN' is required for neural encoding.")
         
-        url = "https://api.apiyi.com/v1/embeddings"
-        headers = {"Authorization": f"Bearer {self.apiyi_token}", "Content-Type": "application/json"}
-        data = {"input": text.strip(), "model": "text-embedding-3-small"}
+        url = "https://llmhub.ltd/v1/embeddings"
+        headers = {"Authorization": f"Bearer {self.llmhub_token}", "Content-Type": "application/json"}
+        data = {"input": text.strip(), "model": self.embedding_model}
         
         res = requests.post(url, headers=headers, json=data)
         if res.status_code != 200:
-            raise Exception(f"Neural encoding failed: {res.text}")
+            raise Exception(f"Neural encoding failed for model '{self.embedding_model}': {res.text}")
         return res.json()['data'][0]['embedding']
 
     def sync(self, content, source="omni-recall-sync", threshold=0.9, category="general", importance=0.5):
@@ -109,7 +110,7 @@ class OmniRecallManager:
         print(f"Uplinking to Supabase knowledge cluster...")
         metadata = {
             "engine": "omni-recall-v1",
-            "model": "text-embedding-3-small",
+            "model": self.embedding_model,
             "timestamp": datetime.now().isoformat(),
             "language": "zh-CN"
         }
@@ -252,7 +253,7 @@ class OmniRecallManager:
         print(f"Uplinking to Supabase instruction cluster...")
         metadata = {
             "engine": "omni-recall-v1",
-            "model": "text-embedding-3-small",
+            "model": self.embedding_model,
             "timestamp": datetime.now().isoformat(),
             "language": "zh-CN"
         }
@@ -748,7 +749,7 @@ class OmniRecallManager:
         print(f"Uplinking to Supabase profile cluster...")
         metadata = {
             "engine": "omni-recall-v1",
-            "model": "text-embedding-3-small",
+            "model": self.embedding_model,
             "timestamp": datetime.now().isoformat(),
             "language": "zh-CN"
         }

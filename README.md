@@ -2,7 +2,7 @@
 
 > **Elevate your AI Agent with persistent neural memory and intelligent semantic search.**
 
-Omni-Recall is a standardized Agent Skill for Trae, Cursor, and other AI coding assistants. It provides a robust, vector-based long-term memory system using Supabase (PostgreSQL + pgvector) and APIYI (Embeddings).
+Omni-Recall is a standardized Agent Skill for Trae, Cursor, and other AI coding assistants. It provides a robust, vector-based long-term memory system using Supabase (PostgreSQL + pgvector) and LLMHub (Embeddings).
 
 ## 🌟 Features
 
@@ -26,7 +26,8 @@ npx skills add ralph-wren/omni-recall
 
 1. **Database Setup**: Run the SQL script found in `SKILL.md` in your Supabase SQL editor.
 2. **Environment Variables**:
-   - `APIYI_TOKEN`: Your API key from [apiyi.com](https://api.apiyi.com)
+   - `LLMHUB_TOKEN`: Your API key from [llmhub.ltd](https://llmhub.ltd)
+   - `LLMHUB_EMBEDDING_MODEL`: Optional embedding model name, defaults to `text-embedding-3-small`
    - `SUPABASE_PASSWORD`: Your database password
 
 ## 🧠 Core Methodology

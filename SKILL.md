@@ -1,6 +1,6 @@
 ---
 name: "omni-recall"
-description: "Omni-Recall: Neural Knowledge & Long-Term Context Engine with Vector Semantic Search. Manages cross-session agent memory via Supabase (pgvector + HNSW) and APIYI. Supports intelligent natural language queries with similarity scoring."
+description: "Omni-Recall: Neural Knowledge & Long-Term Context Engine with Vector Semantic Search. Manages cross-session agent memory via Supabase (pgvector + HNSW) and LLMHub. Supports intelligent natural language queries with similarity scoring."
 ---
 
 # Omni-Recall: Neural Knowledge & Long-Term Context Engine
@@ -13,7 +13,7 @@ Omni-Recall is a high-performance memory management skill designed for AI agents
    Intelligent natural language queries using vector similarity. Finds semantically related content even with different wording. Returns results ranked by similarity score (0-1). Default threshold: 0.5 (balanced recall and precision).
 
 2. **Neural Synchronization (`sync`)**:
-   Encodes current session state, user preferences, and operational steps into 1536-dimensional vectors using OpenAI's `text-embedding-3-small` via APIYI. **Includes automatic duplicate detection** (skips if cosine similarity > 0.9). Supports optional `category` and `importance` fields.
+   Encodes current session state, user preferences, and operational steps into vectors using the configured LLMHub embedding model. Default is OpenAI's `text-embedding-3-small`. **Includes automatic duplicate detection** (skips if cosine similarity > 0.9). Supports optional `category` and `importance` fields.
 
 3. **Contextual Retrieval (`fetch`)**:
    Pulls historical neural records using natural language queries or time-based filters. Supports similarity threshold tuning (0.5-0.9) and category filtering.
@@ -211,7 +211,8 @@ create table if not exists public.vault (
 
 ### 2. Environment Configuration
 Required variables for the neural uplink:
-- `APIYI_TOKEN`: Authorization for the Neural Encoding API ([apiyi.com](https://api.apiyi.com))
+- `LLMHUB_TOKEN`: Authorization for the Neural Encoding API ([llmhub.ltd](https://llmhub.ltd))
+- `LLMHUB_EMBEDDING_MODEL`: Optional embedding model name, defaults to `text-embedding-3-small`
 - `SUPABASE_PASSWORD`: Credentials for the PostgreSQL Knowledge Base
 
 ## 🧠 Engineering Principles
